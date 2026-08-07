@@ -1,0 +1,85 @@
+#!/bin/bash
+#SBATCH --job-name ocr_pdfs
+#SBATCH -N 1                        # Number of nodes to use
+#SBATCH -n 1                        # Number of tasks
+#SBATCH --cpus-per-task 6           # The number of processes for this code
+#SBATCH -t 24:00:00                 # Job allocation time (maximum runtime)
+#SBATCH --no-requeue                # What to do if this fails, in this case just drops
+#SBATCH -o ocrmypdf.out             # standard output
+#SBATCH -e ocrmypdf.err             # standard error
+
+
+# =========================================================
+# OCR a directory of PDFs with ocrmypdf using a Slurm array
+# =========================================================
+#
+# Usage:
+#   1. Edit INPUT_DIR and OUTPUT_DIR below (or export them
+#      before submitting, see notes at bottom).
+#   2. Find out how many PDFs you have:
+#        ls "$INPUT_DIR"/*.pdf | wc -l
+#   3. Submit with an array range matching that count, e.g.
+#      for 37 files:
+#        sbatch --array=0-36 ocr_pdfs.slurm
+#
+# Each array task OCRs exactly one PDF, so jobs run in
+# parallel across the cluster instead of looping serially.
+# ---------------------------------------------------------
+
+set -euo pipefail
+
+# ---- Configuration ---------------------------------------------------
+INPUT_DIR="${INPUT_DIR:-./pdfs}"          # directory containing input PDFs
+OUTPUT_DIR="${OUTPUT_DIR:-./pdfs/ocr_completed}"    # where OCR'd PDFs will be written
+LOG_DIR="${LOG_DIR:-./ocr_logs}"          # per-file logs
+OCRMYPDF_OPTS="${OCRMYPDF_OPTS:---skip-text --deskew}"
+# Common OCRMYPDF_OPTS alternatives:
+#   --force-ocr        re-OCR pages that already have text
+#   --skip-text         skip pages that already contain text (default here)
+#   --redo-ocr          redo OCR, keeping existing text layer where possible
+#   -l eng+fra           specify languages (default is eng)
+
+mkdir -p "$OUTPUT_DIR" "$LOG_DIR"
+
+# ---- (Optional) activate environment with ocrmypdf --------------------
+module load tesseract-ocr
+source /data/username/pve/bin/activate   # if installed in a virtualenv
+
+
+command -v ocrmypdf >/dev/null 2>&1 || {
+    echo "ERROR: ocrmypdf not found on PATH. Load the appropriate module/env." >&2
+    exit 1
+}
+
+# ---- Build file list (sorted, reproducible order) ----------------------
+mapfile -t PDF_FILES < <(find "$INPUT_DIR" -maxdepth 1 -type f -iname '*.pdf' | sort)
+NUM_FILES=${#PDF_FILES[@]}
+
+if [[ "$NUM_FILES" -eq 0 ]]; then
+    echo "ERROR: No PDF files found in $INPUT_DIR" >&2
+    exit 1
+fi
+
+TASK_ID="${SLURM_ARRAY_TASK_ID:-0}"
+
+if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
+    echo "NOTE: SLURM_ARRAY_TASK_ID not set (not run as an array job)."
+    echo "Processing only the first file. Resubmit with e.g.:"
+    echo "  sbatch --array=0-$((NUM_FILES - 1)) $0"
+fi
+
+if [[ "$TASK_ID" -ge "$NUM_FILES" ]]; then
+    echo "Task ID $TASK_ID has no corresponding file (only $NUM_FILES files found). Exiting."
+    exit 0
+fi
+
+INPUT_FILE="${PDF_FILES[$TASK_ID]}"
+BASENAME="$(basename "$INPUT_FILE")"
+OUTPUT_FILE="$OUTPUT_DIR/$BASENAME"
+
+echo "[$(date)] Task $TASK_ID: OCR'ing $INPUT_FILE -> $OUTPUT_FILE"
+
+ocrmypdf $OCRMYPDF_OPTS "$INPUT_FILE" "$OUTPUT_FILE" \
+    > "$LOG_DIR/${BASENAME%.pdf}.log" 2>&1
+
+echo "[$(date)] Task $TASK_ID: done."

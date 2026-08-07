@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --job-name=analyze_pii
+#SBATCH --output=/data/username/pii/results/pii_%j.log
+#SBATCH --error=/data/username/pii/results/pii_%j.err
+#SBATCH --time=08:00:00
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+
+mkdir -p /data/username/pii/results
+
+# Activate your virtual environment
+source /data/username/pve/bin/activate
+
+# Execute the Python pipeline
+python analyze_pipeline.py \
+    --input_dir /data/username/pii \
+    --output_dir /data/username/pii/results \
+    --num_procs $SLURM_CPUS_PER_TASK \
+    --job_id $SLURM_JOB_ID

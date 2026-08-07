@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+#SBATCH --job-name=whisperx
+#SBATCH --output=%j.out
+#SBATCH --error=%j.err
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=8
+
+# Path to your Virtual Environment
+VE_DIR="/data/[username]/pve"
+
+# Whisper model size (tiny, base, small, medium, large)
+MODEL="large"
+
+# Path to your audio data
+AUDIO_DIR="audio"
+
+# Hugging face token
+export HF_TOKEN="insert token here"
+
+
+######################################
+## No need to modify anything below ##
+######################################
+
+OUTPUT_DIR="transcripts"
+LOG_DIR="logs"
+
+cd "$AUDIO_DIR" || exit 1
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$LOG_DIR"
+shopt -s nullglob
+
+max_jobs=$SLURM_CPUS_PER_TASK
+
+for file in *; do
+
+    case "$file" in
+        *.mp3|*.wav|*.m4a|*.aac|*.flac|*.mp4|*.mkv|*.mov)
+
+            base="${file%.*}"
+
+            "$VE_DIR/bin/whisperx" \
+                "$file" \
+                --model "$MODEL" \
+                --language en \
+                --compute_type float32 \
+                --diarize \
+                --hf_token "$HF_TOKEN" \
+                --output_dir "$OUTPUT_DIR" \
+                > "$LOG_DIR/${base}.out" \
+                2> "$LOG_DIR/${base}.err" &
+
+            # throttle parallel jobs
+            while [ "$(jobs -r | wc -l)" -ge "$max_jobs" ]; do
+                sleep 1
+            done
+            ;;
+    esac
+done
+wait
