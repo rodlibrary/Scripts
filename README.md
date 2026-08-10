@@ -1,5 +1,5 @@
 Various PowerShell, Python, and SLURM scripts for batch processing files as part of archival processing and accessibility work.
-
+-------------------------------------------------------------------------------------------------
 **Virus check**
 Windows Defender
 Windows Defender is a cybersecurity and threat protection solution. It provides antivirus software, identity theft monitoring, and real-time security alerts across Windows, macOS, iOS, and Android devices.
@@ -8,7 +8,7 @@ Terminal
 2. Open Terminal in Documents
 3. Type the following [replace path to files]:
 .\defenderSearch.ps1 -Path "\path\to\files" -OutputCsv "\path\to\files\defender.csv"
-
+-------------------------------------------------------------------------------------------------
 **PII**
 PDF Miner
 PDF Miner is an open-source PDF PII detection tool.
@@ -19,7 +19,7 @@ Terminal
   3. Open Terminal in Documents
   4. Run
       python pii_scanner.py "\path\to\files" -o "\path\to\files\results.csv”
-     
+------------------------------------------------------------------------------------------------     
 **OCR**
 JP2s
 Pytesseract
@@ -36,7 +36,7 @@ Terminal
 4. Open Terminal in Documents
 5. Enter:  
     python ocr_jp2.py “\path\to\files" [note: you can set this to run an entire directory, creating subfolders for \ocr_ouput if you so wish]
-
+-------------------------------------------------------------------------------------------------
 **HTT**
 1. Create a Google AI Studio account
 2. Create an API key
