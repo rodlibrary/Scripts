@@ -22,6 +22,7 @@ Terminal
       python pii_scanner.py "\path\to\files" -o "\path\to\files\results.csv”
 ----------------------------------------------------------------------------------------------
 **Optical character recognition (OCR)**
+
 JP2s
 
 Pytesseract is an open-source optical character recognition (OCR) engine. This process allows you to recursively convert jp2s into .txt, .xml, and .pdf formats (one per image) for a directory of folders. Tesseract is required.
@@ -152,7 +153,6 @@ OUTPUT
                    plus a status/notes column reporting any problems.
     <output>.anvl  ANVL-formatted metadata records (the format used by
                    ARK resolvers such as N2T/EZID) suitable for import.
-
 
 Terminal
 1. Copy generate_arks.py to Documents
