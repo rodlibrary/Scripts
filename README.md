@@ -7,7 +7,7 @@ Windows Defender is a cybersecurity and threat protection solution. It provides 
 Terminal
 1. Copy defenderSearch.ps1 to Documents
 2. Open Terminal in Documents
-3. Type the following [replace path to files]:
+3. Enter: 
 .\defenderSearch.ps1 -Path "\path\to\files" -OutputCsv "\path\to\files\defender.csv"
 ----------------------------------------------------------------------------------------------
 **PII**
@@ -19,7 +19,7 @@ Terminal
     python -m pip install pdfminer.six
   2. Download a copy of pii_scanner.py to Documents
   3. Open Terminal in Documents
-  4. Run
+  4. Enter:
       python pii_scanner.py "\path\to\files" -o "\path\to\files\results.csv”
 ----------------------------------------------------------------------------------------------
 **Optical character recognition (OCR)**
@@ -64,13 +64,7 @@ HPC
 
 10. Click on the Terminal icon
 11. Count the number of pdfs to OCR and enter that number X highlighted in the next step
-12. Enter the following command: sbatch --array=0-X ocr_pdfs.script
-Click Execute
-Click Close
- You can enter squeue to ensure/monitor the process
- Download files when finished.
- Delete files from HPC when done.
-
+12. Enter: sbatch --array=0-X ocr_pdfs.script
 ----------------------------------------------------------------------------------------------
 **Handwriting to text (HTT)**
 
@@ -83,7 +77,7 @@ Terminal
 		$env:GEMINI_API_KEY="your_api_key_here"  
 5. Copy htt.py to Documents
 6. Open Terminal in Documents 
-7. Run the following command [change path as necessary]
+7. Enter:
     python htt.py “\path\to\files” -o “\path\to\files\results”
 ----------------------------------------------------------------------------------------------
 **Speech to text (STT)**
@@ -163,6 +157,6 @@ Terminal
 2. Copy arks.csv to Documents
 3. Edit arks.csv as necessary (NAAN: #####)
 4. Open Terminal in Documents
-5. Run the following command:
+5. Enter:
 	python generate_arks.py arks.csv output --add-checksum --master-list 	“path/to/ark_master_list.csv”
 ----------------------------------------------------------------------------------------------
