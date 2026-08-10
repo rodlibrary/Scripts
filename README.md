@@ -12,6 +12,7 @@ Terminal
 **PII**
 
 PDF Miner is an open-source PDF PII detection tool.
+
 Terminal
   1. Install PDF Miner
     python -m pip install pdfminer.six
