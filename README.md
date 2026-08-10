@@ -1,5 +1,5 @@
 Various PowerShell, Python, and SLURM scripts for batch processing files as part of archival processing and accessibility work.
--------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------
 **Virus check**
 
 Windows Defender is a cybersecurity and threat protection solution. It provides antivirus software, identity theft monitoring, and real-time security alerts across Windows, macOS, iOS, and Android devices.
@@ -8,7 +8,7 @@ Terminal
 2. Open Terminal in Documents
 3. Type the following [replace path to files]:
 .\defenderSearch.ps1 -Path "\path\to\files" -OutputCsv "\path\to\files\defender.csv"
--------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------
 **PII**
 
 PDF Miner is an open-source PDF PII detection tool.
@@ -67,7 +67,7 @@ Click Close
  Download files when finished.
  Delete files from HPC when done.
 
--------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------
 **Handwriting to text (HTT)**
 1. Create a Google AI Studio account
 2. Create an API key
@@ -79,9 +79,42 @@ Click Close
 6. Open Terminal in Documents 
 7. Run the following command [change path as necessary]
     python htt.py “\path\to\files” -o “\path\to\files\results”
--------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------
 **Speech to text (STT)**
--------------------------------------------------------------------------------------------------
+WhisperX builds on OpenAI’s open-source speech recognition model, Whisper, and adds the functionality of speaker recognition.
+
+HPC
+We have set up WhisperX to run on UNI’s High Performance Computing System. 
+
+1. Create an account with Hugging Face 
+	* Add the following repository to your account: 
+		* https://huggingface.co/pyannote/speaker-diarization-community-1 
+		* Accept User Conditions
+		* Obtain a Read-Only Token
+		* Click on Profile
+		* Click on Access Tokens
+		* Click on Create New Token
+		* Name: Transcription
+  		* Repositories: Read access to the contents of all public gated repos you can access
+    	* Click Create
+		* Copy token
+2. Download a copy of whisperx.script
+3. Edit whisperx.script
+	* Line 9: Enter ID into VE_DIR="/data/ID/pve"
+	* Line 18: paste Hugging Face token into “insert token here”
+	* Save
+4. Install Whisperx on HPC
+	* export TMPDIR="/home/$USER/data/tmp" 
+	* mkdir $TMPDIR || exit 1 
+	* module load python3.11
+	* python -m venv pve
+	* pve/bin/pip install -U whisperx
+5. Create an /audio folder in your hpc directory
+6. Upload the edited whisperx.script into your hpc directory
+7. Upload AV files you want to transcribe into the /audio folder. [Note: the script does not currently support subfolders, so all AV files need to be in this folder.]
+8. Open Terminal
+9. Enter: sbatch whisperx.script
+----------------------------------------------------------------------------------------------
 **Generate archival resource keys (ARKs)**
 This process generates Archival Resource Keys (ARKs) from a CSV of source records.
 
