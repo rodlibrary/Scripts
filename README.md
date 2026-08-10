@@ -3,6 +3,7 @@ Various PowerShell, Python, and SLURM scripts for batch processing files as part
 **Virus check**
 
 Windows Defender is a cybersecurity and threat protection solution. It provides antivirus software, identity theft monitoring, and real-time security alerts across Windows, macOS, iOS, and Android devices.
+
 Terminal
 1. Copy defenderSearch.ps1 to Documents
 2. Open Terminal in Documents
@@ -26,6 +27,7 @@ Terminal
 JP2s
 
 Pytesseract is an open-source optical character recognition (OCR) engine. This process allows you to recursively convert jp2s into .txt, .xml, and .pdf formats (one per image) for a directory of folders. Tesseract is required.
+
 Terminal
 1. Enter the following commands to install the dependencies:
  * python -m pip install pytesseract pillow
@@ -44,7 +46,7 @@ OCRmyPDF is an open-source optical character recognition (OCR) engine for pdfs.
 
 We have set OCRmyPDF up to run on UNI’s High Performance Computing System.
 
-Process:
+HPC
 1. Create a folder \pdfs in your hpc directory
 2. Create a subfolder in pdfs for pdfs\ocr_completed in your hpc directory
 3. Install ocrmypdf using the following commands (you can skip to step e. if you have already installed WhisperX)
@@ -71,6 +73,8 @@ Click Close
 
 ----------------------------------------------------------------------------------------------
 **Handwriting to text (HTT)**
+
+Terminal
 1. Create a Google AI Studio account
 2. Create an API key
 3. Sign up for credit billing
@@ -161,4 +165,4 @@ Terminal
 4. Open Terminal in Documents
 5. Run the following command:
 	python generate_arks.py arks.csv output --add-checksum --master-list 	“path/to/ark_master_list.csv”
--------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------
