@@ -21,6 +21,39 @@ Terminal
   3. Open Terminal in Documents
   4. Enter:
       python pii_scanner.py "\path\to\files" -o "\path\to\files\results.csv”
+
+Presidio
+
+Presidio is an open-source PII detection and remediation application.
+
+HPC
+We have set up Presidio to run on UNI’s High Performance Computing System. 
+
+1. Install Presidio
+	* export TMPDIR="/home/catID/data/tmp" 
+	* mkdir $TMPDIR || exit 1 
+	* module load python3.11
+	* pve/bin/pip install -U presidio_analyzer
+	* pve/bin/pip install -U presidio_anonymizer
+	* pve/bin/pip install -U presidio_image_redactor
+	* python -m spacy download en_core_web_lg
+2. Create a /pii folder and /pii/results subfolder in your hpc directory
+
+Analyze
+
+1. Upload analyze.script and analyze_pipeline to your hpc directory
+2. Upload files to pii folder
+3. Open Terminal
+4. Enter: sbatch analyze.script
+5. Review results
+
+Anonymize
+
+1. Upload anonymize.script and anonymize_pipeline to your hpc directory
+2. Upload files to pii folder
+3. Open Terminal
+4. Enter: sbatch anonymize.script /data/ID/pii/results/pii_results_job#.csv
+
 ----------------------------------------------------------------------------------------------
 **Optical character recognition (OCR)**
 
@@ -42,6 +75,7 @@ Terminal
     python ocr_jp2.py “\path\to\files" [note: you can set this to run an entire directory, creating subfolders for \ocr_ouput if you so wish]
 
 PDFs
+
 OCRmyPDF is an open-source optical character recognition (OCR) engine for pdfs.
 
 We have set OCRmyPDF up to run on UNI’s High Performance Computing System.
@@ -114,6 +148,23 @@ We have set up WhisperX to run on UNI’s High Performance Computing System.
 7. Upload AV files you want to transcribe into the /audio folder. [Note: the script does not currently support subfolders, so all AV files need to be in this folder.]
 8. Open Terminal
 9. Enter: sbatch whisperx.script
+----------------------------------------------------------------------------------------------
+**Generate SHA-256 checksums**
+
+Export results to a CSV file 
+1. Copy sha256.ps1 to C:\Users\catID\Documents 
+	* Edit input and output directories as needed.
+	* Save
+2. Open Terminal in Documents
+3. Type .\sha256.ps1
+
+Export to a standard .sha256 file (Linux / sha256sum style) to parse or use later with integrity checkers 
+
+1. Copy sha256output.ps1 to C:\Users\catID\Documents 
+	* Edit input and output directories as needed.
+	* Save
+2. Open Terminal in Documents
+3. Type .\sha256output.ps1
 ----------------------------------------------------------------------------------------------
 **Generate archival resource keys (ARKs)**
 This process generates Archival Resource Keys (ARKs) from a CSV of source records.
