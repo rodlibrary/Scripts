@@ -1,7 +1,7 @@
 Various PowerShell, Python, and SLURM scripts for batch processing files as part of archival processing and accessibility work.
 -------------------------------------------------------------------------------------------------
 **Virus check**
-Windows Defender
+
 Windows Defender is a cybersecurity and threat protection solution. It provides antivirus software, identity theft monitoring, and real-time security alerts across Windows, macOS, iOS, and Android devices.
 Terminal
 1. Copy defenderSearch.ps1 to Documents
@@ -10,7 +10,7 @@ Terminal
 .\defenderSearch.ps1 -Path "\path\to\files" -OutputCsv "\path\to\files\defender.csv"
 -------------------------------------------------------------------------------------------------
 **PII**
-PDF Miner
+
 PDF Miner is an open-source PDF PII detection tool.
 Terminal
   1. Install PDF Miner
@@ -19,10 +19,10 @@ Terminal
   3. Open Terminal in Documents
   4. Run
       python pii_scanner.py "\path\to\files" -o "\path\to\files\results.csv”
-------------------------------------------------------------------------------------------------     
-**OCR**
+----------------------------------------------------------------------------------------------
+**Optical character recognition (OCR)**
 JP2s
-Pytesseract
+
 Pytesseract is an open-source optical character recognition (OCR) engine. This process allows you to recursively convert jp2s into .txt, .xml, and .pdf formats (one per image) for a directory of folders. Tesseract is required.
 Terminal
 1. Enter the following commands to install the dependencies:
@@ -36,8 +36,39 @@ Terminal
 4. Open Terminal in Documents
 5. Enter:  
     python ocr_jp2.py “\path\to\files" [note: you can set this to run an entire directory, creating subfolders for \ocr_ouput if you so wish]
+
+PDFs
+OCRmyPDF is an open-source optical character recognition (OCR) engine for pdfs.
+
+We have set OCRmyPDF up to run on UNI’s High Performance Computing System.
+
+Process:
+1. Create a folder \pdfs in your hpc directory
+2. Create a subfolder in pdfs for pdfs\ocr_completed in your hpc directory
+3. Install ocrmypdf using the following commands (you can skip to step e. if you have already installed WhisperX)
+	xport TMPDIR="/home/$USER/data/tmp" 
+	mkdir $TMPDIR || exit 1 
+	module load python3.11
+	python -m venv pve
+	pve/bin/pip install -U ocrmypdf
+
+7. Download the ocr_pdfs.script
+8. Modify line 46 to add your ID
+	/data/ID/pve/bin/activate
+
+9. Upload pdfs you want to OCR into the \pdfs folder. [Note: the script does not currently support subfolders, so all pdfs need to be in the same folder.] 
+
+10. Click on the Terminal icon
+11. Count the number of pdfs to OCR and enter that number X highlighted in the next step
+12. Enter the following command: sbatch --array=0-X ocr_pdfs.script
+Click Execute
+Click Close
+ You can enter squeue to ensure/monitor the process
+ Download files when finished.
+ Delete files from HPC when done.
+
 -------------------------------------------------------------------------------------------------
-**HTT**
+**Handwriting to text (HTT)**
 1. Create a Google AI Studio account
 2. Create an API key
 3. Sign up for credit billing
@@ -48,3 +79,52 @@ Terminal
 6. Open Terminal in Documents 
 7. Run the following command [change path as necessary]
     python htt.py “\path\to\files” -o “\path\to\files\results”
+-------------------------------------------------------------------------------------------------
+**Speech to text (STT)**
+-------------------------------------------------------------------------------------------------
+**Generate archival resource keys (ARKs)**
+This process generates Archival Resource Keys (ARKs) from a CSV of source records.
+
+An ARK has the form:
+
+    ark:/NAAN/NAME
+
+where NAME is normally built from an optional "shoulder" (a prefix that
+marks a sub-namespace, policy, or minter) followed by a unique identifier
+string ("blade"). This script does not register ARKs with a resolver
+(e.g. N2T / EZID) -- it constructs well-formed ARK strings and matching
+ANVL metadata records from data you already have, which you can then load
+into whatever resolver/registry you use.
+
+INPUT CSV COLUMNS
+------------------
+Column headers are case-insensitive and surrounding whitespace is ignored.
+
+    naan          		optional  	Name Assigning Authority Number (32498)
+    shoulder      		optional  	ARK shoulder / prefix (e.g. "s3", "z9")
+    identifier    		REQUIRED  	Unique local identifier ("blade") for this object
+    title         		REQUIRED  	Title / short description of the resource
+    url           		optional  	URL the ARK should resolve to
+    type          		optional  	Resource type (e.g. Text, Image, Dataset)
+    commitment    		optional  	Persistence commitment statement
+    format        		optional  	File / media format (e.g. application/pdf)
+    relation      		optional  	Related identifier or resource
+    source        		optional  	Source / provenance citation
+
+OUTPUT
+------
+    <output>.csv   One row per input record with the generated ARK,
+                   a resolvable https://n2t.net/... URL, and all metadata,
+                   plus a status/notes column reporting any problems.
+    <output>.anvl  ANVL-formatted metadata records (the format used by
+                   ARK resolvers such as N2T/EZID) suitable for import.
+
+
+Terminal
+1. Copy generate_arks.py to Documents
+2. Copy arks.csv to Documents
+3. Edit arks.csv as necessary (NAAN: #####)
+4. Open Terminal in Documents
+5. Run the following command:
+	python generate_arks.py arks.csv output --add-checksum --master-list 	“path/to/ark_master_list.csv”
+-------------------------------------------------------------------------------------------------
