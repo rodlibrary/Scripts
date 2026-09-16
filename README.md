@@ -95,7 +95,6 @@ HPC
 	/data/ID/pve/bin/activate
 
 9. Upload pdfs you want to OCR into the \pdfs folder. [Note: the script does not currently support subfolders, so all pdfs need to be in the same folder.] 
-
 10. Click on the Terminal icon
 11. Count the number of pdfs to OCR and enter that number X highlighted in the next step
 12. Enter: sbatch --array=0-X ocr_pdfs.script
