@@ -21,8 +21,7 @@ INPUT CSV COLUMNS
 Column headers are case-insensitive and surrounding whitespace is ignored.
 
     naan          optional  Name Assigning Authority Number (digits only).
-                            If omitted (or blank), defaults automatically
-                            to 32498. Override per-run with --naan, or
+                            If omitted (or blank), uses default value. Override per-run with --naan, or
                             per-row by filling in this column.
     shoulder      optional  ARK shoulder / prefix (e.g. "s3", "z9")
     identifier    REQUIRED  Local identifier for this object. Kept for
