@@ -1,0 +1,192 @@
+#!/bin/bash
+#SBATCH --job-name=iq_anonymize_pii
+#SBATCH --output=/data/hartwigd/pii/results/iq_anonymize_%j.log
+#SBATCH --error=/data/hartwigd/pii/results/iq_anonymize_%j.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=24:00:00
+
+# IQ branch: anonymization using the IQ field policy (iq_field_policy.csv).
+# The results CSV must come from iq_analyze.script.
+#
+# Usage:
+#   sbatch iq_anonymize.script <pii_results.csv>                              # policy only
+#   sbatch iq_anonymize.script <pii_results.csv> <types-to-keep>              # also keep these types
+#   sbatch iq_anonymize.script <pii_results.csv> <types-to-keep|none> <policy.csv>
+#
+# The policy decides each export field (redact / scan / keep / keep_all).
+# <types-to-keep> applies only to fields the policy sets to "scan" (e.g.
+# names mentioned in notes); it never un-redacts a "redact" field.
+# Use "none" as <types-to-keep> to give a policy file without keeping types.
+#
+# <types-to-keep> is a comma-separated list (no spaces). Use Presidio entity
+# types, or these shortcuts:
+#     names          -> PERSON
+#     locations      -> LOCATION       (cities, states, etc.; NOT street addresses)
+#     dates          -> DATE_TIME      (NOT dates of birth)
+#     organizations  -> ORGANIZATION
+#     keep_names     -> PERSON         (same as "names"; kept for older commands)
+#
+# Examples:
+#   sbatch iq_anonymize.script /data/hartwigd/pii/iq_results/pii_results_123.csv
+#   sbatch iq_anonymize.script /data/hartwigd/pii/iq_results/pii_results_123.csv names,dates
+#   sbatch iq_anonymize.script /data/hartwigd/pii/iq_results/pii_results_123.csv none my_policy.csv
+#
+# Output goes to /data/hartwigd/pii/iq_anonymize when nothing is kept, otherwise
+# to /data/hartwigd/pii/iq_anonymize_keep_<types>. A policy file other than
+# iq_field_policy.csv adds its name, e.g. iq_anonymize_my_policy, so runs with
+# different settings never overwrite each other.
+PII_RESULTS_CSV="${1:?Usage: sbatch iq_anonymize.script <pii_results.csv> [types-to-keep|none] [policy.csv]}"
+KEEP_ARG="${2:-}"
+POLICY_ARG="${3:-iq_field_policy.csv}"
+if [ "$(echo "$KEEP_ARG" | tr '[:upper:]' '[:lower:]')" = "none" ]; then
+    KEEP_ARG=""
+fi
+if [ $# -gt 3 ] || { [ $# -eq 3 ] && [[ "$POLICY_ARG" != *.csv ]]; }; then
+    echo "ERROR: unexpected arguments. Write the types to keep as one comma-separated" >&2
+    echo "       list with no spaces, e.g. names,locations,dates,organizations," >&2
+    echo "       optionally followed by a policy file ending in .csv" >&2
+    exit 1
+fi
+
+# Stop execution if any step fails
+set -e
+
+echo "Job started at: $(date)"
+
+# Create the log/results directory if it does not exist.
+# NOTE: this needs to exist *before* sbatch is run, since SLURM opens the
+# --output/--error log files at job start, before this line ever executes.
+mkdir -p /data/hartwigd/pii/results
+
+# Activate your virtual environment
+VENV="/data/hartwigd/pve"
+source "$VENV/bin/activate"
+
+# Define input/output paths
+INPUT_DIR="/data/hartwigd/pii"
+OUTPUT_BASE="/data/hartwigd/pii/iq_anonymize"
+POLICY_NAME="$(basename "$POLICY_ARG" .csv)"
+if [ "$POLICY_NAME" != "iq_field_policy" ]; then
+    OUTPUT_BASE="${OUTPUT_BASE}_${POLICY_NAME}"
+fi
+
+# Turn the second argument into a list of entity types to keep.
+KEEP_TYPES=""
+if [ -n "$KEEP_ARG" ]; then
+    for item in ${KEEP_ARG//,/ }; do
+        case "$(echo "$item" | tr '[:upper:]' '[:lower:]')" in
+            keep_names|names|name|person)            type="PERSON" ;;
+            locations|location)                      type="LOCATION" ;;
+            dates|date|datetime|date_time|times)     type="DATE_TIME" ;;
+            organizations|organization|orgs|org)     type="ORGANIZATION" ;;
+            *)
+                type="$(echo "$item" | tr '[:lower:]' '[:upper:]')"
+                if ! [[ "$type" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+                    echo "ERROR: '$item' is not a valid entity type." >&2
+                    echo "       Use a comma-separated list with no spaces, e.g. names,locations,dates,organizations" >&2
+                    exit 1
+                fi ;;
+        esac
+        KEEP_TYPES="$KEEP_TYPES $type"
+    done
+    # Sort and de-duplicate so the same settings always map to the same folder.
+    KEEP_TYPES="$(echo $KEEP_TYPES | tr ' ' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')"
+fi
+
+if [ -z "$KEEP_TYPES" ]; then
+    OUTPUT_DIR="$OUTPUT_BASE"
+    KEEP_OPTION=()
+    echo "Keeping: nothing (all detected PII is anonymized)"
+else
+    if [ "$KEEP_TYPES" = "PERSON" ]; then
+        OUTPUT_DIR="${OUTPUT_BASE}_keep_names"
+    else
+        OUTPUT_DIR="${OUTPUT_BASE}_keep_$(echo "$KEEP_TYPES" | tr '[:upper:]' '[:lower:]' | tr ',' '-')"
+    fi
+    KEEP_OPTION=(--keep_entities "$KEEP_TYPES")
+    echo "Keeping unchanged: $KEEP_TYPES"
+fi
+mkdir -p "$OUTPUT_DIR"
+echo "Output folder: $OUTPUT_DIR"
+
+# The pipeline scripts live in the directory sbatch was run from.
+SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+cd "$SCRIPT_DIR"
+POLICY="$(realpath "$POLICY_ARG" 2>/dev/null || echo "$POLICY_ARG")"
+
+# ---------------------------------------------------------------------------
+# Preflight checks: fail fast, with a clear message, before any work starts.
+# ---------------------------------------------------------------------------
+
+# Which Python is this job using? (Compare with the same line in the analyze log.)
+echo "Python: $(command -v python)"
+python -c "import sys; print('Python executable:', sys.executable); print('Python version:', sys.version.split()[0])"
+
+for f in anonymize_pipeline.py iq_anonymize_pipeline.py iq_policy.py; do
+    if [ ! -f "$SCRIPT_DIR/$f" ]; then
+        echo "ERROR: $f not found in $SCRIPT_DIR." >&2
+        echo "       Run sbatch from the folder that contains the pipeline scripts." >&2
+        exit 1
+    fi
+done
+if [ ! -f "$POLICY" ]; then
+    echo "ERROR: policy file not found: $POLICY" >&2
+    exit 1
+fi
+POLICY_USED="${PII_RESULTS_CSV%.csv}_policy.csv"
+if [ -f "$PII_RESULTS_CSV" ] && [ ! -f "$POLICY_USED" ]; then
+    echo "ERROR: $POLICY_USED not found." >&2
+    echo "       This results CSV did not come from iq_analyze.script; run that first." >&2
+    exit 1
+fi
+
+if [ ! -f "$PII_RESULTS_CSV" ]; then
+    echo "ERROR: results CSV not found: $PII_RESULTS_CSV" >&2
+    exit 1
+fi
+
+# Check every package the anonymizer imports is installed in this environment.
+python - "$VENV" <<'EOF'
+import importlib, sys
+needed = {                      # import name -> pip package name
+    "pandas": "pandas",
+    "presidio_analyzer": "presidio-analyzer",
+    "presidio_anonymizer": "presidio-anonymizer",
+    "pdfminer": "pdfminer.six",
+    "pytesseract": "pytesseract",
+    "PIL": "pillow",
+}
+missing = []
+for module, package in needed.items():
+    try:
+        importlib.import_module(module)
+    except ImportError:
+        missing.append(package)
+if missing:
+    venv = sys.argv[1]
+    print("ERROR: these packages are not installed in the environment at " + venv + ":",
+          ", ".join(missing), file=sys.stderr)
+    print("Install them from a login node with:", file=sys.stderr)
+    print(f"    source {venv}/bin/activate", file=sys.stderr)
+    print(f"    python -m pip install {' '.join(missing)}", file=sys.stderr)
+    sys.exit(1)
+print("All required packages found.")
+EOF
+
+python iq_policy.py check "$POLICY"
+
+# ---------------------------------------------------------------------------
+
+# Run the IQ anonymization pipeline against the IQ analysis results
+python iq_anonymize_pipeline.py \
+    --policy "$POLICY" \
+    --input_dir "$INPUT_DIR" \
+    --pii_results_csv "$PII_RESULTS_CSV" \
+    --output_dir "$OUTPUT_DIR" \
+    --num_procs "$SLURM_CPUS_PER_TASK" \
+    --job_id "$SLURM_JOB_ID" \
+    "${KEEP_OPTION[@]}"
+
+echo "Job finished successfully at: $(date)"
