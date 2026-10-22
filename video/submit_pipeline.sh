@@ -106,7 +106,7 @@ should_run () {
     return 0
 }
 
-mkdir -p "${SCRIPT_DIR}/../logs"
+mkdir -p "${SCRIPT_DIR}/logs"
 
 prev_jobid=""
 submitted_any=0
