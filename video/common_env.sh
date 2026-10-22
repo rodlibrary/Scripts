@@ -16,7 +16,7 @@ module load openmpi/gcc/64/4.1.8  # confirmed via `module avail openmpi`
 # no module needed.
 # No conda/miniconda module on this cluster — activate the venv directly.
 
-source /data/hartwigd/pve/bin/activate
+source /data/$USER/pve/bin/activate
 
 # --- API credentials ---------------------------------------------------------
 # Never hardcode secrets. Store the key in a file only you can read.
