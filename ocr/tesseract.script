@@ -1,0 +1,35 @@
+#!/bin/bash
+#SBATCH --job-name Tesseract
+#SBATCH -N 1                        # Number of nodes to use
+#SBATCH -n 1                        # Number of tasks
+#SBATCH --cpus-per-task 6           # The number of processes for this code
+#SBATCH -t 24:00:00                 # Job allocation time (maximum runtime)
+#SBATCH --no-requeue                # What to do if this fails, in this case just drops
+#SBATCH -o Tesseract.out            # standard output
+#SBATCH -e Tesseract.err            # standard error
+
+# Load module
+module load tesseract-ocr
+
+# Filter Directories
+INPUT_DIR="images"
+OUTPUT_DIR="outputs"
+mkdir -p "$OUTPUT_DIR"
+
+# Run as many instances of Tesseract as there are CPUs available
+# (Specify CPUs at the top of the job file)
+find "$INPUT_DIR" -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.tif" -o -iname "*.tiff" \) \
+| xargs -I {} -n 1 -P $SLURM_CPUS_PER_TASK bash -c '
+    img="$1"
+    outdir="$2"
+    base=$(basename "$img")
+    base="${base%.*}"
+    tesseract "$img" "$outdir/$base"
+    tesseract "$img" "$outdir/$base" pdf
+    tesseract "$img" "$outdir/$base" hocr
+    tesseract "$img" "$outdir/$base" alto
+' _ {} "$OUTPUT_DIR"
+
+# Remove empty output/error files
+[ -s Tesseract.out ] || rm Tesseract.out
+[ -s Tesseract.err ] || rm Tesseract.err
