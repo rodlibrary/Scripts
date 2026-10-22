@@ -4,7 +4,7 @@ from pyPreservica import EntityAPI, AdminAPI
 
 # Custom Metadata Schema Properties
 SCHEMA_URI = "http://digital.library.uni.edu"
-ELEMENT_NAME = f"{{{digital.library.uni.edu}}}downloadCount"
+ELEMENT_NAME = f"{{{SCHEMA_URI}}}downloadCount"
 
 def get_session_token():
     """Initializes pyPreservica and extracts the active bearer token for custom requests."""
