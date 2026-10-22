@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 
 # Path to your Virtual Environment
-VE_DIR="/data/[username]/pve"
+VE_DIR="/data/$USER/pve"
 
 # Whisper model size (tiny, base, small, medium, large)
 MODEL="large"
