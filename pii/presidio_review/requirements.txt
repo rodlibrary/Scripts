@@ -1,0 +1,13 @@
+presidio-analyzer
+presidio-anonymizer
+# structured.py uses PandasAnalysisBuilder internals to report per-column match rates;
+# re-test if you upgrade past 0.0.x
+presidio-structured>=0.0.8,<0.1
+pandas
+pdfminer.six
+pypdfium2
+Pillow
+python-docx>=1.1
+openpyxl
+pytesseract
+# Tesseract itself is a separate program; see README "Setup"

@@ -1,0 +1,1 @@
+badge_photo.jpg: image: scan was rotated 90 degrees; OCR corrected it.

@@ -1,0 +1,17 @@
+{
+  "language": "en",
+  "ocr": {
+    "mode": "auto",
+    "lang": "eng",
+    "dpi": 300,
+    "min_conf": 0,
+    "auto_rotate": true
+  },
+  "structured": {
+    "enabled": true,
+    "strategy": "most_common",
+    "sample_rows": 500,
+    "min_match_ratio": 0.3,
+    "free_text_words": 5
+  }
+}
