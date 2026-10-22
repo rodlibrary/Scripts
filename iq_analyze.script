@@ -1,0 +1,145 @@
+#!/bin/bash
+#SBATCH --job-name=iq_analyze_pii
+#SBATCH --output=/data/hartwigd/pii/results/iq_analyze_%j.log
+#SBATCH --error=/data/hartwigd/pii/results/iq_analyze_%j.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=24:00:00
+
+# IQ branch: PII analysis using the IQ field policy.
+#
+# Usage:
+#   sbatch iq_analyze.script                              # all files, iq_field_policy.csv
+#   sbatch iq_analyze.script my_policy.csv                # all files, another policy
+#   sbatch iq_analyze.script file=export1.dat             # only this file
+#   sbatch iq_analyze.script file=export1.dat policy=my_policy.csv
+#
+# file= is a path relative to /data/hartwigd/pii (e.g. file=docs/letter.pdf);
+# wildcards work if quoted (file='docs/*.eml'), and several can be given
+# separated by commas (file=export1.dat,export2.dat). A name without a folder
+# also matches that file name in any subfolder.
+#
+# Results go to /data/hartwigd/pii/iq_results/pii_results_<job_id>.csv, with
+# pii_results_<job_id>_policy.csv (the policy used) and
+# pii_results_<job_id>_exports.csv (the IQ exports found) next to it.
+# Pass that results CSV to iq_anonymize.script.
+POLICY_ARG="iq_field_policy.csv"
+ONLY_OPTION=()
+for arg in "$@"; do
+    case "$arg" in
+        file=*)
+            IFS=',' read -ra pats <<< "${arg#file=}"
+            for p in "${pats[@]}"; do
+                [ -n "$p" ] && ONLY_OPTION+=(--only "$p")
+            done ;;
+        policy=*)
+            POLICY_ARG="${arg#policy=}" ;;
+        *.csv)
+            POLICY_ARG="$arg" ;;   # older form: sbatch iq_analyze.script my_policy.csv
+        *)
+            echo "ERROR: unexpected argument '$arg'." >&2
+            echo "       Usage: sbatch iq_analyze.script [file=NAME[,NAME...]] [policy=FILE.csv]" >&2
+            exit 1 ;;
+    esac
+done
+
+# Stop execution if any step fails
+set -e
+
+echo "Job started at: $(date)"
+
+# NOTE: /data/hartwigd/pii/results must exist *before* sbatch is run, since
+# SLURM opens the --output/--error log files at job start.
+mkdir -p /data/hartwigd/pii/results
+
+# Activate your virtual environment
+VENV="/data/hartwigd/pve"
+source "$VENV/bin/activate"
+
+# Define input/output paths
+INPUT_DIR="/data/hartwigd/pii"
+OUTPUT_DIR="/data/hartwigd/pii/iq_results"
+mkdir -p "$OUTPUT_DIR"
+
+# The pipeline scripts live in the directory sbatch was run from.
+SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+cd "$SCRIPT_DIR"
+POLICY="$(realpath "$POLICY_ARG" 2>/dev/null || echo "$POLICY_ARG")"
+
+# Output folders inside INPUT_DIR that must not be scanned as input.
+EXCLUDES=()
+for d in "$INPUT_DIR"/results "$INPUT_DIR"/iq_results "$INPUT_DIR"/anonymize* "$INPUT_DIR"/iq_anonymize*; do
+    [ -d "$d" ] && EXCLUDES+=(--exclude_dir "$d")
+done
+
+# ---------------------------------------------------------------------------
+# Preflight checks: fail fast, with a clear message, before any work starts.
+# ---------------------------------------------------------------------------
+echo "Python: $(command -v python)"
+python -c "import sys; print('Python executable:', sys.executable); print('Python version:', sys.version.split()[0])"
+
+for f in analyze_pipeline.py iq_analyze_pipeline.py iq_policy.py; do
+    if [ ! -f "$SCRIPT_DIR/$f" ]; then
+        echo "ERROR: $f not found in $SCRIPT_DIR." >&2
+        echo "       Run sbatch from the folder that contains the pipeline scripts." >&2
+        exit 1
+    fi
+done
+if [ ! -f "$POLICY" ]; then
+    echo "ERROR: policy file not found: $POLICY" >&2
+    exit 1
+fi
+
+python - "$VENV" <<'EOF'
+import importlib, sys
+needed = {
+    "pandas": "pandas",
+    "presidio_analyzer": "presidio-analyzer",
+    "presidio_structured": "presidio-structured",
+    "spacy": "spacy",
+    "pdfminer": "pdfminer.six",
+    "pytesseract": "pytesseract",
+    "PIL": "pillow",
+}
+missing = []
+for module, package in needed.items():
+    try:
+        importlib.import_module(module)
+    except ImportError:
+        missing.append(package)
+if missing:
+    venv = sys.argv[1]
+    print("ERROR: these packages are not installed in the environment at " + venv + ":",
+          ", ".join(missing), file=sys.stderr)
+    print("Install them from a login node with:", file=sys.stderr)
+    print(f"    source {venv}/bin/activate", file=sys.stderr)
+    print(f"    python -m pip install {' '.join(missing)}", file=sys.stderr)
+    sys.exit(1)
+import spacy
+if not spacy.util.is_package("en_core_web_lg"):
+    print("ERROR: spaCy model en_core_web_lg is not installed. From a login node run:",
+          file=sys.stderr)
+    print("    python -m spacy download en_core_web_lg", file=sys.stderr)
+    sys.exit(1)
+print("All required packages found.")
+EOF
+
+# Check the policy file before spending hours on analysis.
+python iq_policy.py check "$POLICY"
+
+# ---------------------------------------------------------------------------
+
+python iq_analyze_pipeline.py \
+    --policy "$POLICY" \
+    --input_dir "$INPUT_DIR" \
+    --output_dir "$OUTPUT_DIR" \
+    --recursive \
+    "${EXCLUDES[@]}" \
+    "${ONLY_OPTION[@]}" \
+    --num_procs "$SLURM_CPUS_PER_TASK" \
+    --job_id "$SLURM_JOB_ID"
+
+echo "Results: $OUTPUT_DIR/pii_results_${SLURM_JOB_ID}.csv"
+echo "Next:    sbatch iq_anonymize.script $OUTPUT_DIR/pii_results_${SLURM_JOB_ID}.csv"
+echo "Job finished successfully at: $(date)"

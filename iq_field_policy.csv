@@ -1,0 +1,359 @@
+record_type,field_no,field_name,action,label,notes
+1A,1,Record Type,keep_all,,Identifies the record type; never changed.
+1A,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+1A,3,Person Type,keep_all,,Internal ID or type code; needed to link records.
+1A,4,Prefix,keep,,Kept for research value; ID numbers still removed.
+1A,5,First Name,redact,<FIRST_NAME>,Directly identifies a person; replaced in full.
+1A,6,Middle Name,redact,<MIDDLE_NAME>,Directly identifies a person; replaced in full.
+1A,7,Last Name,redact,<LAST_NAME>,Directly identifies a person; replaced in full.
+1A,8,Suffix,keep,,Kept for research value; ID numbers still removed.
+1A,9,Appellation,redact,<APPELLATION>,Can hold a full honorific with the person's name (e.g. 'The Honorable ...'); replaced in full.
+1A,10,Organization Name,scan,,Detected PII only.
+1A,11,Salutation,redact,<SALUTATION>,Directly identifies a person; replaced in full.
+1A,12,Date of Birth,redact,<DATE_OF_BIRTH>,Directly identifies a person; replaced in full.
+1A,13,No Mail Flag,keep_all,,"Code, flag, date, status or staff user ID."
+1A,14,Deceased Flag,keep_all,,"Code, flag, date, status or staff user ID."
+1A,15,Spouse Name,redact,<SPOUSE_NAME>,Directly identifies a person; replaced in full.
+1A,16,Email Flag,keep_all,,"Code, flag, date, status or staff user ID."
+1B,1,Record Type,keep_all,,Identifies the record type; never changed.
+1B,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+1B,3,Address ID,keep_all,,Internal ID or type code; needed to link records.
+1B,4,Address Type,keep_all,,"Code, flag, date, status or staff user ID."
+1B,5,Primary Flag,keep_all,,"Code, flag, date, status or staff user ID."
+1B,6,Default Address Flag,keep_all,,"Code, flag, date, status or staff user ID."
+1B,7,Title,scan,,Detected PII only.
+1B,8,Organization Name,scan,,Detected PII only.
+1B,9,Address Line 1,redact,<ADDRESS_LINE_1>,Directly identifies a person; replaced in full.
+1B,10,Address Line 2,redact,<ADDRESS_LINE_2>,Directly identifies a person; replaced in full.
+1B,11,Address Line 3,redact,<ADDRESS_LINE_3>,Directly identifies a person; replaced in full.
+1B,12,Address Line 4,redact,<ADDRESS_LINE_4>,Directly identifies a person; replaced in full.
+1B,13,City,keep,,Kept for research value; ID numbers still removed.
+1B,14,State Code,keep,,Kept for research value; ID numbers still removed.
+1B,15,Zip Code,redact,<ZIP_CODE>,Directly identifies a person; replaced in full.
+1B,16,Carrier Route,keep,,Kept for research value; ID numbers still removed.
+1B,17,County,keep,,Kept for research value; ID numbers still removed.
+1B,18,Country,keep,,Kept for research value; ID numbers still removed.
+1B,19,District,keep,,Kept for research value; ID numbers still removed.
+1B,20,Precinct,keep,,Kept for research value; ID numbers still removed.
+1B,21,No Mail Flag,keep_all,,"Code, flag, date, status or staff user ID."
+1B,22,Deliverability,keep_all,,"Code, flag, date, status or staff user ID."
+1C,1,Record Type,keep_all,,Identifies the record type; never changed.
+1C,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+1C,3,Person Code Type,keep_all,,"Code, flag, date, status or staff user ID."
+1C,4,Code,keep_all,,"Code, flag, date, status or staff user ID."
+1D,1,Record Type,keep_all,,Identifies the record type; never changed.
+1D,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+1D,3,Sequence,keep_all,,"Code, flag, date, status or staff user ID."
+1D,4,Text,scan,,Free text; detected PII only.
+1D,5,Date,keep_all,,"Code, flag, date, status or staff user ID."
+1D,6,Time,keep_all,,"Code, flag, date, status or staff user ID."
+1D,7,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+1E,1,Record Type,keep_all,,Identifies the record type; never changed.
+1E,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+1E,3,Phone or Email Type,keep_all,,Internal ID or type code; needed to link records.
+1E,4,Value,redact,<VALUE>,"Phone number, email address or web page of the person."
+1E,5,Primary Flag,keep_all,,"Code, flag, date, status or staff user ID."
+1E,6,Invalid Flag,keep_all,,"Code, flag, date, status or staff user ID."
+1F,1,Record Type,keep_all,,Identifies the record type; never changed.
+1F,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+1F,3,Document Name,scan,,Free text; detected PII only.
+1F,4,Document ID,keep_all,,Internal ID or type code; needed to link records.
+1F,5,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+1F,6,Attached Date,keep_all,,"Code, flag, date, status or staff user ID."
+1F,7,Text,scan,,Free text; detected PII only.
+2A,1,Record Type,keep_all,,Identifies the record type; never changed.
+2A,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+2A,3,Communication ID,keep_all,,Internal ID or type code; needed to link records.
+2A,4,Workflow ID,keep_all,,Internal ID or type code; needed to link records.
+2A,5,Workflow Person ID,keep_all,,"Code, flag, date, status or staff user ID."
+2A,6,Communication Type,keep_all,,"Code, flag, date, status or staff user ID."
+2A,7,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+2A,8,Approved By,keep_all,,"Code, flag, date, status or staff user ID."
+2A,9,Status,keep_all,,"Code, flag, date, status or staff user ID."
+2A,10,Date In,keep_all,,"Code, flag, date, status or staff user ID."
+2A,11,Date Out,keep_all,,"Code, flag, date, status or staff user ID."
+2A,12,Reminder Date,keep_all,,"Code, flag, date, status or staff user ID."
+2A,13,Update Date,keep_all,,"Code, flag, date, status or staff user ID."
+2A,14,Response Type,keep_all,,"Code, flag, date, status or staff user ID."
+2A,15,Address ID,keep_all,,"Code, flag, date, status or staff user ID."
+2A,16,Email Address,redact,<EMAIL_ADDRESS>,Directly identifies a person; replaced in full.
+2A,17,Household Flag,keep_all,,"Code, flag, date, status or staff user ID."
+2A,18,Household ID,keep_all,,"Code, flag, date, status or staff user ID."
+2A,19,Group Name,keep_all,,"Code, flag, date, status or staff user ID."
+2A,20,Salutation,redact,<SALUTATION>,Directly identifies a person; replaced in full.
+2B,1,Record Type,keep_all,,Identifies the record type; never changed.
+2B,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+2B,3,Communication ID,keep_all,,Internal ID or type code; needed to link records.
+2B,4,Communication Code,keep_all,,"Code, flag, date, status or staff user ID."
+2B,5,Position,keep_all,,"Code, flag, date, status or staff user ID."
+2C,1,Record Type,keep_all,,Identifies the record type; never changed.
+2C,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+2C,3,Communication ID,keep_all,,Internal ID or type code; needed to link records.
+2C,4,Document Type,keep_all,,Internal ID or type code; needed to link records.
+2C,5,Communication Document Name,scan,,Free text; detected PII only.
+2C,6,Communication Document ID,keep_all,,"Code, flag, date, status or staff user ID."
+2C,7,File Location,scan,,Free text; detected PII only.
+2D,1,Record Type,keep_all,,Identifies the record type; never changed.
+2D,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+2D,3,Communication ID,keep_all,,Internal ID or type code; needed to link records.
+2D,4,Sequence,keep_all,,"Code, flag, date, status or staff user ID."
+2D,5,Text,scan,,Free text; detected PII only.
+2D,6,Date,keep_all,,"Code, flag, date, status or staff user ID."
+2D,7,Time,keep_all,,"Code, flag, date, status or staff user ID."
+2D,8,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+2E,1,Record Type,keep_all,,Identifies the record type; never changed.
+2E,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+2E,3,Communication ID,keep_all,,Internal ID or type code; needed to link records.
+2E,4,Fill-in Field Name,keep_all,,"Name of a custom field or letter fill-in, not its value."
+2E,5,Fill-in Data,scan,,Free text; detected PII only.
+3A,1,Record Type,keep_all,,Identifies the record type; never changed.
+3A,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+3A,3,Workflow ID,keep_all,,Internal ID or type code; needed to link records.
+3A,4,Workflow Type,keep_all,,Internal ID or type code; needed to link records.
+3A,5,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+3A,6,Start Date,keep_all,,"Code, flag, date, status or staff user ID."
+3A,7,End Date,keep_all,,"Code, flag, date, status or staff user ID."
+3A,8,Reminder Date,keep_all,,"Code, flag, date, status or staff user ID."
+3A,9,Update Date,keep_all,,"Code, flag, date, status or staff user ID."
+3A,10,Workflow Description,scan,,Free text; detected PII only.
+3A,11,Status,keep_all,,"Code, flag, date, status or staff user ID."
+3B,1,Record Type,keep_all,,Identifies the record type; never changed.
+3B,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+3B,3,Workflow ID,keep_all,,Internal ID or type code; needed to link records.
+3B,4,Workflow Code,keep_all,,"Code, flag, date, status or staff user ID."
+3D,1,Record Type,keep_all,,Identifies the record type; never changed.
+3D,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+3D,3,Workflow ID,keep_all,,Internal ID or type code; needed to link records.
+3D,4,Sequence,keep_all,,"Code, flag, date, status or staff user ID."
+3D,5,Text,scan,,Free text; detected PII only.
+3D,6,Date,keep_all,,"Code, flag, date, status or staff user ID."
+3D,7,Time,keep_all,,"Code, flag, date, status or staff user ID."
+3D,8,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+3E,1,Record Type,keep_all,,Identifies the record type; never changed.
+3E,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+3E,3,Workflow ID,keep_all,,Internal ID or type code; needed to link records.
+3E,4,Party ID,keep_all,,"Code, flag, date, status or staff user ID."
+3F,1,Record Type,keep_all,,Identifies the record type; never changed.
+3F,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+3F,3,Workflow ID,keep_all,,Internal ID or type code; needed to link records.
+3F,4,Document Name,scan,,Free text; detected PII only.
+3F,5,Document ID,keep_all,,Internal ID or type code; needed to link records.
+3F,6,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+3F,7,Attached Date,keep_all,,"Code, flag, date, status or staff user ID."
+3F,8,Text,scan,,Free text; detected PII only.
+3L,1,Record Type,keep_all,,Identifies the record type; never changed.
+3L,2,Person ID,keep_all,,Internal ID or type code; needed to link records.
+3L,3,Workflow ID,keep_all,,Internal ID or type code; needed to link records.
+3L,4,Workflow Type,keep_all,,Internal ID or type code; needed to link records.
+3L,5,Field Name,keep_all,,"Name of a custom field or letter fill-in, not its value."
+3L,6,Field Value,scan,,Free text; detected PII only.
+5A,1,Record Type,keep_all,,Identifies the record type; never changed.
+5A,2,Household ID,keep_all,,Internal ID or type code; needed to link records.
+5A,3,Household Name,redact,<HOUSEHOLD_NAME>,Directly identifies a person; replaced in full.
+5A,4,Household Salutation,redact,<HOUSEHOLD_SALUTATION>,Directly identifies a person; replaced in full.
+5B,1,Record Type,keep_all,,Identifies the record type; never changed.
+5B,2,Household ID,keep_all,,Internal ID or type code; needed to link records.
+5B,3,Person ID,keep_all,,"Code, flag, date, status or staff user ID."
+5B,4,Primary Contact Flag,keep_all,,"Code, flag, date, status or staff user ID."
+5C,1,Record Type,keep_all,,Identifies the record type; never changed.
+5C,2,Household ID,keep_all,,Internal ID or type code; needed to link records.
+5C,3,Document Name,scan,,Free text; detected PII only.
+5C,4,Document ID,keep_all,,Internal ID or type code; needed to link records.
+5C,5,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+5C,6,Attached Date,keep_all,,"Code, flag, date, status or staff user ID."
+5C,7,Text,scan,,Free text; detected PII only.
+5D,1,Record Type,keep_all,,Identifies the record type; never changed.
+5D,2,Household ID,keep_all,,Internal ID or type code; needed to link records.
+5D,3,Sequence,keep_all,,"Code, flag, date, status or staff user ID."
+5D,4,Text,scan,,Free text; detected PII only.
+5D,5,Date,keep_all,,"Code, flag, date, status or staff user ID."
+5D,6,Time,keep_all,,"Code, flag, date, status or staff user ID."
+5D,7,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+6A,1,Record Type,keep_all,,Identifies the record type; never changed.
+6A,2,Document ID,keep_all,,Internal ID or type code; needed to link records.
+6A,3,Version,keep_all,,"Code, flag, date, status or staff user ID."
+6A,4,Document Grouping ID,keep_all,,"Code, flag, date, status or staff user ID."
+6A,5,Document Type,keep_all,,"Code, flag, date, status or staff user ID."
+6A,6,Document Display Name,scan,,Free text; detected PII only.
+6A,7,Document Description,scan,,Free text; detected PII only.
+6A,8,Document Name,scan,,Free text; detected PII only.
+6A,9,Created By,keep_all,,"Code, flag, date, status or staff user ID."
+6A,10,Revised By,keep_all,,"Code, flag, date, status or staff user ID."
+6A,11,Approved By,keep_all,,"Code, flag, date, status or staff user ID."
+6A,12,Creation Date,keep_all,,"Code, flag, date, status or staff user ID."
+6A,13,Revision Date,keep_all,,"Code, flag, date, status or staff user ID."
+6A,14,Last Used Date,keep_all,,"Code, flag, date, status or staff user ID."
+6A,15,Status,keep_all,,"Code, flag, date, status or staff user ID."
+6A,16,Inactive Flag,keep_all,,"Code, flag, date, status or staff user ID."
+6A,17,Virtual Directory,scan,,Free text; detected PII only.
+6B,1,Record Type,keep_all,,Identifies the record type; never changed.
+6B,2,Document ID,keep_all,,Internal ID or type code; needed to link records.
+6B,3,Fill-in Field Name,keep_all,,"Name of a custom field or letter fill-in, not its value."
+6C,1,Record Type,keep_all,,Identifies the record type; never changed.
+6C,2,Document ID,keep_all,,Internal ID or type code; needed to link records.
+6C,3,Code Type,keep_all,,"Code, flag, date, status or staff user ID."
+6C,4,Code,keep_all,,"Code, flag, date, status or staff user ID."
+6D,1,Record Type,keep_all,,Identifies the record type; never changed.
+6D,2,Document ID,keep_all,,Internal ID or type code; needed to link records.
+6D,3,Document Name,scan,,Free text; detected PII only.
+6D,4,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+6D,5,Attached Date,keep_all,,"Code, flag, date, status or staff user ID."
+6D,6,Text,scan,,Free text; detected PII only.
+6D,7,Form Letter Attachment Flag,keep_all,,"Code, flag, date, status or staff user ID."
+6E,1,Record Type,keep_all,,Identifies the record type; never changed.
+6E,2,Document ID,keep_all,,Internal ID or type code; needed to link records.
+6E,3,Sequence,keep_all,,"Code, flag, date, status or staff user ID."
+6E,4,Text,scan,,Free text; detected PII only.
+6E,5,Date,keep_all,,"Code, flag, date, status or staff user ID."
+6E,6,Time,keep_all,,"Code, flag, date, status or staff user ID."
+6E,7,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+6F,1,Record Type,keep_all,,Identifies the record type; never changed.
+6F,2,Document ID,keep_all,,Internal ID or type code; needed to link records.
+6F,3,Owned By,keep_all,,"Code, flag, date, status or staff user ID."
+7A,1,Record Type,keep_all,,Identifies the record type; never changed.
+7A,2,Event ID,keep_all,,Internal ID or type code; needed to link records.
+7A,3,Recurrence ID,keep_all,,"Code, flag, date, status or staff user ID."
+7A,4,Event Description,scan,,Free text; detected PII only.
+7A,5,Contact,redact,<CONTACT>,Directly identifies a person; replaced in full.
+7A,6,County,keep,,Kept for research value; ID numbers still removed.
+7A,7,Organization,scan,,Detected PII only.
+7A,8,Start Date,keep_all,,"Code, flag, date, status or staff user ID."
+7A,9,Start Time,keep_all,,"Code, flag, date, status or staff user ID."
+7A,10,End Date,keep_all,,"Code, flag, date, status or staff user ID."
+7A,11,End Time,keep_all,,"Code, flag, date, status or staff user ID."
+7A,12,Time Zone,keep_all,,"Code, flag, date, status or staff user ID."
+7A,13,Location,scan,,Free text; detected PII only.
+7A,14,Status,keep_all,,"Code, flag, date, status or staff user ID."
+7A,15,Private Flag,keep_all,,"Code, flag, date, status or staff user ID."
+7A,16,Scheduled Date,keep_all,,"Code, flag, date, status or staff user ID."
+7A,17,Scheduled By,keep_all,,"Code, flag, date, status or staff user ID."
+7A,18,Revision Date,keep_all,,"Code, flag, date, status or staff user ID."
+7A,19,Revised By,keep_all,,"Code, flag, date, status or staff user ID."
+7A,20,Address Line 1,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7A,21,Address Line 2,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7A,22,Address Line 3,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7A,23,Address Line 4,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7A,24,City,keep,,Kept for research value; ID numbers still removed.
+7A,25,State Code,keep,,Kept for research value; ID numbers still removed.
+7A,26,Zip Code,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7A,27,Country,keep,,Kept for research value; ID numbers still removed.
+7B,1,Record Type,keep_all,,Identifies the record type; never changed.
+7B,2,Event ID,keep_all,,Internal ID or type code; needed to link records.
+7B,3,Event Code,keep_all,,"Code, flag, date, status or staff user ID."
+7C,1,Record Type,keep_all,,Identifies the record type; never changed.
+7C,2,Event ID,keep_all,,Internal ID or type code; needed to link records.
+7C,3,Participant Type,keep_all,,"Code, flag, date, status or staff user ID."
+7C,4,Participant ID,keep_all,,"Code, flag, date, status or staff user ID."
+7D,1,Record Type,keep_all,,Identifies the record type; never changed.
+7D,2,Event ID,keep_all,,Internal ID or type code; needed to link records.
+7D,3,Document Name,scan,,Free text; detected PII only.
+7D,4,Document ID,keep_all,,Internal ID or type code; needed to link records.
+7D,5,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+7D,6,Attached Date,keep_all,,"Code, flag, date, status or staff user ID."
+7D,7,Text,scan,,Free text; detected PII only.
+7E,1,Record Type,keep_all,,Identifies the record type; never changed.
+7E,2,Event ID,keep_all,,Internal ID or type code; needed to link records.
+7E,3,Sequence,keep_all,,"Code, flag, date, status or staff user ID."
+7E,4,Text,scan,,Free text; detected PII only.
+7E,5,Date,keep_all,,"Code, flag, date, status or staff user ID."
+7E,6,Time,keep_all,,"Code, flag, date, status or staff user ID."
+7E,7,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+7F,1,Record Type,keep_all,,Identifies the record type; never changed.
+7F,2,Event ID,keep_all,,Internal ID or type code; needed to link records.
+7F,3,Workflow ID,keep_all,,"Code, flag, date, status or staff user ID."
+7H,1,Record Type,keep_all,,Identifies the record type; never changed.
+7H,2,Recurrence ID,keep_all,,Internal ID or type code; needed to link records.
+7H,3,Start Series Date,keep_all,,"Code, flag, date, status or staff user ID."
+7H,4,End Series Date,keep_all,,"Code, flag, date, status or staff user ID."
+7H,5,Recurrence Type,keep_all,,"Code, flag, date, status or staff user ID."
+7H,6,Recurrence Interval,keep_all,,"Code, flag, date, status or staff user ID."
+7I,1,Record Type,keep_all,,Identifies the record type; never changed.
+7I,2,Recurrence ID,keep_all,,Internal ID or type code; needed to link records.
+7I,3,Not Used,keep_all,,"Code, flag, date, status or staff user ID."
+7I,4,Event Description,scan,,Free text; detected PII only.
+7I,5,Contact,redact,<CONTACT>,Directly identifies a person; replaced in full.
+7I,6,County,keep,,Kept for research value; ID numbers still removed.
+7I,7,Organization,scan,,Detected PII only.
+7I,8,Not Used,keep_all,,"Code, flag, date, status or staff user ID."
+7I,9,Start Time,keep_all,,"Code, flag, date, status or staff user ID."
+7I,10,Not Used,keep_all,,"Code, flag, date, status or staff user ID."
+7I,11,End Time,keep_all,,"Code, flag, date, status or staff user ID."
+7I,12,Time Zone,keep_all,,"Code, flag, date, status or staff user ID."
+7I,13,Location,scan,,Free text; detected PII only.
+7I,14,Status,keep_all,,"Code, flag, date, status or staff user ID."
+7I,15,Private Flag,keep_all,,"Code, flag, date, status or staff user ID."
+7I,16,Scheduled Date,keep_all,,"Code, flag, date, status or staff user ID."
+7I,17,Scheduled By,keep_all,,"Code, flag, date, status or staff user ID."
+7I,18,Revision Date,keep_all,,"Code, flag, date, status or staff user ID."
+7I,19,Revised By,keep_all,,"Code, flag, date, status or staff user ID."
+7I,20,Address Line 1,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7I,21,Address Line 2,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7I,22,Address Line 3,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7I,23,Address Line 4,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7I,24,City,keep,,Kept for research value; ID numbers still removed.
+7I,25,State Code,keep,,Kept for research value; ID numbers still removed.
+7I,26,Zip Code,keep,,"Event venue address (usually public). Presidio does not detect street addresses, so set to redact if venues may be homes."
+7I,27,Country,keep,,Kept for research value; ID numbers still removed.
+7J,1,Record Type,keep_all,,Identifies the record type; never changed.
+7J,2,Recurrence ID,keep_all,,Internal ID or type code; needed to link records.
+7J,3,Event Code,keep_all,,"Code, flag, date, status or staff user ID."
+7K,1,Record Type,keep_all,,Identifies the record type; never changed.
+7K,2,Recurrence ID,keep_all,,Internal ID or type code; needed to link records.
+7K,3,Participant Type,keep_all,,"Code, flag, date, status or staff user ID."
+7K,4,Participant ID,keep_all,,"Code, flag, date, status or staff user ID."
+7L,1,Record Type,keep_all,,Identifies the record type; never changed.
+7L,2,Recurrence ID,keep_all,,Internal ID or type code; needed to link records.
+7L,3,Document Name,scan,,Free text; detected PII only.
+7L,4,Document ID,keep_all,,Internal ID or type code; needed to link records.
+7L,5,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+7L,6,Attached Date,keep_all,,"Code, flag, date, status or staff user ID."
+7L,7,Text,scan,,Free text; detected PII only.
+7M,1,Record Type,keep_all,,Identifies the record type; never changed.
+7M,2,Recurrence ID,keep_all,,Internal ID or type code; needed to link records.
+7M,3,Sequence,keep_all,,"Code, flag, date, status or staff user ID."
+7M,4,Text,scan,,Free text; detected PII only.
+7M,5,Date,keep_all,,"Code, flag, date, status or staff user ID."
+7M,6,Time,keep_all,,"Code, flag, date, status or staff user ID."
+7M,7,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+7N,1,Record Type,keep_all,,Identifies the record type; never changed.
+7N,2,Recurrence ID,keep_all,,Internal ID or type code; needed to link records.
+7N,3,Workflow ID,keep_all,,"Code, flag, date, status or staff user ID."
+8A,1,Record Type,keep_all,,Identifies the record type; never changed.
+8A,2,Code Type,keep_all,,Internal ID or type code; needed to link records.
+8A,3,Code,keep_all,,Internal ID or type code; needed to link records.
+8A,4,Code Description,scan,,Free text; detected PII only.
+8A,5,Inactive Flag,keep_all,,"Code, flag, date, status or staff user ID."
+8A,6,User ID,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,1,Prefix,keep,,Kept for research value; ID numbers still removed.
+ARCHIVE,2,First Name,redact,<FIRST_NAME>,Directly identifies a person; replaced in full.
+ARCHIVE,3,Middle Name,redact,<MIDDLE_NAME>,Directly identifies a person; replaced in full.
+ARCHIVE,4,Last Name,redact,<LAST_NAME>,Directly identifies a person; replaced in full.
+ARCHIVE,5,Suffix,keep,,Kept for research value; ID numbers still removed.
+ARCHIVE,6,Appellation,redact,<APPELLATION>,Can hold a full honorific with the person's name (e.g. 'The Honorable ...'); replaced in full.
+ARCHIVE,7,Title,scan,,Detected PII only.
+ARCHIVE,8,Organization,scan,,Detected PII only.
+ARCHIVE,9,Address Line 1,redact,<ADDRESS_LINE_1>,Directly identifies a person; replaced in full.
+ARCHIVE,10,Address Line 2,redact,<ADDRESS_LINE_2>,Directly identifies a person; replaced in full.
+ARCHIVE,11,Address Line 3,redact,<ADDRESS_LINE_3>,Directly identifies a person; replaced in full.
+ARCHIVE,12,Address Line 4,redact,<ADDRESS_LINE_4>,Directly identifies a person; replaced in full.
+ARCHIVE,13,City,keep,,Kept for research value; ID numbers still removed.
+ARCHIVE,14,State Code,keep,,Kept for research value; ID numbers still removed.
+ARCHIVE,15,Zip Code,redact,<ZIP_CODE>,Directly identifies a person; replaced in full.
+ARCHIVE,16,Country,keep,,Kept for research value; ID numbers still removed.
+ARCHIVE,17,In Correspondence ID,keep_all,,Internal ID or type code; needed to link records.
+ARCHIVE,18,In Correspondence Type,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,19,In Correspondence Method,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,20,In Correspondence Date,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,21,In Correspondence Topics,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,22,In Correspondence Text,scan,,Free text; detected PII only.
+ARCHIVE,23,In Correspondence Doc Names,scan,,Free text; detected PII only.
+ARCHIVE,24,In Correspondence Filing No,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,25,Out Correspondence ID,keep_all,,Internal ID or type code; needed to link records.
+ARCHIVE,26,Out Correspondence Type,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,27,Out Correspondence Method,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,28,Out Correspondence Date,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,29,Out Correspondence Topics,keep_all,,"Code, flag, date, status or staff user ID."
+ARCHIVE,30,Out Correspondence Text,scan,,Free text; detected PII only.
+ARCHIVE,31,Out Correspondence Doc Names,scan,,Free text; detected PII only.
+ARCHIVE,32,Out Correspondence Fill-in Fields,scan,,Free text; detected PII only.
+*,*,(any field or record type not listed above),scan,<REDACTED>,Custom fields and unknown record types; detected PII only.
