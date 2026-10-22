@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=iq_analyze_pii
-#SBATCH --output=/data/hartwigd/pii/results/iq_analyze_%j.log
-#SBATCH --error=/data/hartwigd/pii/results/iq_analyze_%j.err
+#SBATCH --output=/data/$USER/pii/results/iq_analyze_%j.log
+#SBATCH --error=/data/$USER/pii/results/iq_analyze_%j.err
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -15,12 +15,12 @@
 #   sbatch iq_analyze.script file=export1.dat             # only this file
 #   sbatch iq_analyze.script file=export1.dat policy=my_policy.csv
 #
-# file= is a path relative to /data/hartwigd/pii (e.g. file=docs/letter.pdf);
+# file= is a path relative to /data/$USER/pii (e.g. file=docs/letter.pdf);
 # wildcards work if quoted (file='docs/*.eml'), and several can be given
 # separated by commas (file=export1.dat,export2.dat). A name without a folder
 # also matches that file name in any subfolder.
 #
-# Results go to /data/hartwigd/pii/iq_results/pii_results_<job_id>.csv, with
+# Results go to /data/$USER/pii/iq_results/pii_results_<job_id>.csv, with
 # pii_results_<job_id>_policy.csv (the policy used) and
 # pii_results_<job_id>_exports.csv (the IQ exports found) next to it.
 # Pass that results CSV to iq_anonymize.script.
@@ -49,17 +49,17 @@ set -e
 
 echo "Job started at: $(date)"
 
-# NOTE: /data/hartwigd/pii/results must exist *before* sbatch is run, since
+# NOTE: /data/$USER/pii/results must exist *before* sbatch is run, since
 # SLURM opens the --output/--error log files at job start.
-mkdir -p /data/hartwigd/pii/results
+mkdir -p /data/$USER/pii/results
 
 # Activate your virtual environment
-VENV="/data/hartwigd/pve"
+VENV="/data/$USER/pve"
 source "$VENV/bin/activate"
 
 # Define input/output paths
-INPUT_DIR="/data/hartwigd/pii"
-OUTPUT_DIR="/data/hartwigd/pii/iq_results"
+INPUT_DIR="/data/$USER/pii"
+OUTPUT_DIR="/data/$USER/pii/iq_results"
 mkdir -p "$OUTPUT_DIR"
 
 # The pipeline scripts live in the directory sbatch was run from.
