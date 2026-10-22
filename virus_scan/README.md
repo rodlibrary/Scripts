@@ -15,7 +15,7 @@ Uses Windows' built-in Defender scanner (`MpCmdRun.exe`) to scan a folder, then 
 **Run**
 
 1. Copy `defenderSearch.ps1` to your Documents folder.
-2. Open Terminal **as Administrator** (right-click Terminal > Run as administrator) and go to Documents.
+2. Open Terminal in Documents.
 3. Enter:
 
 ```powershell
