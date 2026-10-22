@@ -42,7 +42,6 @@ Download `whisperx.script` and edit these lines:
 
 | Setting | Change to |
 |---|---|
-| `VE_DIR="/data/[username]/pve"` | Your catID in place of `[username]` |
 | `export HF_TOKEN="insert token here"` | Your Hugging Face token |
 | `MODEL="large"` | Optional: `tiny`, `base`, `small` or `medium` for faster, less accurate results |
 
