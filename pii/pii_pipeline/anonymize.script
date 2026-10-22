@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=anonymize_pii
-#SBATCH --output=/data/hartwigd/pii/results/anonymize_%j.log
-#SBATCH --error=/data/hartwigd/pii/results/anonymize_%j.err
+#SBATCH --output=/data/$USER/pii/results/anonymize_%j.log
+#SBATCH --error=/data/$USER/pii/results/anonymize_%j.err
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -20,12 +20,12 @@
 #     keep_names     -> PERSON         (same as "names"; kept for older commands)
 #
 # Examples:
-#   sbatch anonymize.script /data/hartwigd/pii/results/pii_results_123.csv names
-#   sbatch anonymize.script /data/hartwigd/pii/results/pii_results_123.csv names,locations,dates,organizations
-#   sbatch anonymize.script /data/hartwigd/pii/results/pii_results_123.csv PERSON,ZIP_CODE
+#   sbatch anonymize.script /data/$USER/pii/results/pii_results_123.csv names
+#   sbatch anonymize.script /data/$USER/pii/results/pii_results_123.csv names,locations,dates,organizations
+#   sbatch anonymize.script /data/$USER/pii/results/pii_results_123.csv PERSON,ZIP_CODE
 #
-# Output goes to /data/hartwigd/pii/anonymize when nothing is kept, otherwise
-# to /data/hartwigd/pii/anonymize_keep_<types>, so runs with different
+# Output goes to /data/$USER/pii/anonymize when nothing is kept, otherwise
+# to /data/$USER/pii/anonymize_keep_<types>, so runs with different
 # settings never overwrite each other.
 PII_RESULTS_CSV="${1:?Usage: sbatch anonymize.script <path-to-pii_results_csv> [types-to-keep]}"
 KEEP_ARG="${2:-}"
@@ -43,14 +43,14 @@ echo "Job started at: $(date)"
 # Create the log/results directory if it does not exist.
 # NOTE: this needs to exist *before* sbatch is run, since SLURM opens the
 # --output/--error log files at job start, before this line ever executes.
-mkdir -p /data/hartwigd/pii/results
+mkdir -p /data/$USER/pii/results
 
 # Activate your virtual environment
-VENV="/data/hartwigd/pve"
+VENV="/data/$USER/pve"
 source "$VENV/bin/activate"
 
 # Define input/output paths
-INPUT_DIR="/data/hartwigd/pii"
+INPUT_DIR="/data/$USER/pii"
 
 # Turn the second argument into a list of entity types to keep.
 KEEP_TYPES=""
@@ -76,14 +76,14 @@ if [ -n "$KEEP_ARG" ]; then
 fi
 
 if [ -z "$KEEP_TYPES" ]; then
-    OUTPUT_DIR="/data/hartwigd/pii/anonymize"
+    OUTPUT_DIR="/data/$USER/pii/anonymize"
     KEEP_OPTION=()
     echo "Keeping: nothing (all detected PII is anonymized)"
 else
     if [ "$KEEP_TYPES" = "PERSON" ]; then
-        OUTPUT_DIR="/data/hartwigd/pii/anonymize_keep_names"   # same folder as before
+        OUTPUT_DIR="/data/$USER/pii/anonymize_keep_names"   # same folder as before
     else
-        OUTPUT_DIR="/data/hartwigd/pii/anonymize_keep_$(echo "$KEEP_TYPES" | tr '[:upper:]' '[:lower:]' | tr ',' '-')"
+        OUTPUT_DIR="/data/$USER/pii/anonymize_keep_$(echo "$KEEP_TYPES" | tr '[:upper:]' '[:lower:]' | tr ',' '-')"
     fi
     KEEP_OPTION=(--keep_entities "$KEEP_TYPES")
     echo "Keeping unchanged: $KEEP_TYPES"
