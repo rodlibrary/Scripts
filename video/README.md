@@ -7,11 +7,11 @@ Runs a collection of AV files through a series of processing stages on the HPC: 
 | File | What it does |
 |---|---|
 | [`run_pipeline.py`](run_pipeline.py) | Runs the configured stages in order and records a provenance log for each run |
-| [`slurm/submit_pipeline.sh`](slurm/submit_pipeline.sh) | Submits every stage as a chained SLURM job |
-| `slurm/01_transcribe.slurm` … `13_clustering.slurm` | One SLURM job per stage (see table below) |
-| [`slurm/common_env.sh`](slurm/common_env.sh) | Shared setup for every stage: modules, Python environment, API key |
-| [`slurm/cluster_env.sh`](slurm/cluster_env.sh) | Settings for UNI's cluster (partition `defq`, no GPU or memory requests) |
-| [`slurm/cluster_env.example.sh`](slurm/cluster_env.example.sh) | Template for other clusters |
+| [`submit_pipeline.sh`](submit_pipeline.sh) | Submits every stage as a chained SLURM job |
+| `01_transcribe.slurm` … `13_clustering.slurm` | One SLURM job per stage (see table below) |
+| [`common_env.sh`](common_env.sh) | Shared setup for every stage: modules, your Python environment (`/data/<catID>/pve`), API key |
+| [`cluster_env.sh`](cluster_env.sh) | Settings for UNI's cluster (partition `defq`, no GPU or memory requests) |
+| [`cluster_env.example.sh`](cluster_env.example.sh) | Template for other clusters |
 
 ## Stages
 
@@ -33,9 +33,15 @@ Runs a collection of AV files through a series of processing stages on the HPC: 
 
 ## Setup (once)
 
-1. Upload this whole `video` folder to the HPC, keeping the `slurm/` subfolder, and add the stage scripts and your `config.yaml` next to `run_pipeline.py`.
-2. In `slurm/common_env.sh`, change `source /data/hartwigd/pve/bin/activate` to your own environment, then install `pyyaml` (and the stage scripts' requirements) into it.
-3. Store your Gemini API key in a file only you can read. The jobs load it from there, so it never appears in a script:
+1. Upload all the files in this folder to one folder on the HPC, and add the stage scripts and your `config.yaml` to it.
+2. Install `pyyaml` (and the stage scripts' requirements) into your environment at `/data/<catID>/pve`. `common_env.sh` activates it automatically from your username.
+3. In that folder, create a `logs` folder. SLURM writes each job's log there and won't start a job if it's missing:
+
+   ```bash
+   mkdir -p logs
+   ```
+
+4. Store your Gemini API key in a file only you can read. The jobs load it from there, so it never appears in a script:
 
    ```bash
    mkdir -p ~/.secrets && chmod 700 ~/.secrets
@@ -45,21 +51,23 @@ Runs a collection of AV files through a series of processing stages on the HPC: 
 
 ## Run
 
-From the `video` folder:
+From the folder containing these files:
 
 ```bash
-source slurm/cluster_env.sh
-./slurm/submit_pipeline.sh config.yaml
+source cluster_env.sh
+./submit_pipeline.sh config.yaml
 ```
 
 Skip stages you've already run, or run only some:
 
 ```bash
-SKIP_STEPS="transcribe keyframes" ./slurm/submit_pipeline.sh config.yaml
-ONLY_STEPS="describe_frames summarize" ./slurm/submit_pipeline.sh config.yaml
+SKIP_STEPS="transcribe keyframes" ./submit_pipeline.sh config.yaml
+ONLY_STEPS="describe_frames summarize" ./submit_pipeline.sh config.yaml
 ```
 
-Logs go to `video/logs/`. To run stages directly without SLURM (e.g. for testing):
+Track the jobs with `squeue -u $USER`. Logs go to `logs/`.
+
+To run stages directly without SLURM (e.g. for testing):
 
 ```bash
 python run_pipeline.py --config config.yaml --steps transcribe keyframes --no-mpi

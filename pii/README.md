@@ -80,24 +80,35 @@ pve/bin/pip install -U presidio-analyzer presidio-anonymizer presidio-structured
 pve/bin/python -m spacy download en_core_web_lg
 ```
 
-### 2. Set your paths
+### 2. Set up folders and upload
 
-The SLURM scripts (`anonymize.script`, `iq_analyze.script`, `iq_anonymize.script`) contain the path `/data/hartwigd/`. Replace **every** `hartwigd` with your catID in your copies. The `#SBATCH --output`/`--error` lines at the top count too.
+The scripts find your folders automatically from your username, so there's nothing to edit. They expect this layout:
 
-### 3. Set up folders and upload
+| Folder | Holds |
+|---|---|
+| `/data/<catID>/pve/` | The Python environment from step 1 |
+| `/data/<catID>/pii/` | The files to check |
+| `/data/<catID>/pii/results/` | Job logs, plus results from `analyze_pipeline.py` |
 
-1. Create `/data/catID/pii/` and `/data/catID/pii/results/`.
+1. Create the input and results folders. The results folder must exist **before** you submit a job, because that's where SLURM writes the job's log:
+
+   ```bash
+   mkdir -p /data/$USER/pii/results
+   ```
+
 2. Upload **all** the files in `pii_pipeline/` to one folder in your HPC directory, and run `sbatch` from that folder. The IQ scripts depend on `analyze_pipeline.py`, `anonymize_pipeline.py` and `iq_policy.py` being next to them.
-3. Upload the files to check into `/data/catID/pii/`.
+3. Upload the files to check into `/data/<catID>/pii/`.
 
-### 4. Run
+### 3. Run
+
+Each job's output folder is created inside `/data/<catID>/pii/`, and each job prints the command for the next step when it finishes.
 
 | Step | Command |
 |---|---|
 | Analyze (IQ policy; works for all file types) | `sbatch iq_analyze.script` |
-| Anonymize IQ results | `sbatch iq_anonymize.script /data/catID/pii/iq_results/pii_results_<job>.csv` |
-| Analyze without the IQ policy | `python analyze_pipeline.py --input_dir /data/catID/pii` |
-| Anonymize those results | `sbatch anonymize.script /data/catID/pii/results/pii_results_<job>.csv` |
+| Anonymize IQ results | `sbatch iq_anonymize.script /data/$USER/pii/iq_results/pii_results_<job>.csv` |
+| Analyze without the IQ policy | `python analyze_pipeline.py --input_dir /data/$USER/pii` |
+| Anonymize those results | `sbatch anonymize.script /data/$USER/pii/results/pii_results_<job>.csv` |
 
 Add a second argument to keep some types unchanged, e.g. `... pii_results_123.csv names,dates`. To get an email when a job finishes, add `--mail-type=END,FAIL --mail-user=you@uni.edu` after `sbatch`.
 

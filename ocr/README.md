@@ -145,19 +145,20 @@ Runs OCRmyPDF as a SLURM array job, one PDF per task, so many PDFs are processed
    ```
 
 2. In your HPC directory, create a `pdfs` folder with an `ocr_completed` subfolder.
-3. Edit `ocr_pdfs.script`: on the `source /data/username/pve/bin/activate` line, replace `username` with your catID.
-4. Upload `ocr_pdfs.script` to your HPC directory and the PDFs to `pdfs/`. Subfolders aren't read, so put all PDFs directly in `pdfs/`.
-5. Count the PDFs:
+3. Upload `ocr_pdfs.script` to your HPC directory and the PDFs to `pdfs/`. Subfolders aren't read, so put all PDFs directly in `pdfs/`.
+4. Count the PDFs:
 
    ```bash
    ls pdfs/*.pdf | wc -l
    ```
 
-6. Submit one task per PDF. Array numbering starts at 0, so for 37 PDFs use `0-36`:
+5. Submit one task per PDF. Array numbering starts at 0, so for 37 PDFs use `0-36`:
 
    ```bash
    sbatch --array=0-36 ocr_pdfs.script
    ```
+
+It activates your environment at `/data/<catID>/pve` automatically.
 
 **Output:** OCR'd PDFs in `pdfs/ocr_completed/`, one log per file in `ocr_logs/`. By default pages that already have text are skipped and pages are deskewed; change `OCRMYPDF_OPTS` in the script to alter that.
 

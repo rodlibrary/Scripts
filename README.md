@@ -30,4 +30,4 @@ Each folder has its own README with setup steps, commands and options. Open a fo
 
 Run any Python script with `--help` to see all of its options.
 
-**HPC scripts** (`.script`, `.slurm`) run on UNI's High Performance Computing system. Most use a Python environment in `/data/<your catID>/pve`. Each README shows how to create it, which lines to edit for your catID, and the `sbatch` command to submit the job.
+**HPC scripts** (`.script`, `.slurm`) run on UNI's High Performance Computing system. Most use a Python environment in `/data/<your catID>/pve` and find your folders automatically from your username. Each README shows how to create the environment, any lines you still need to edit, and the `sbatch` command to submit the job.

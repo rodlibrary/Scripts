@@ -6,7 +6,7 @@ Tools for constituent-correspondence exports from Intranet Quorum and other Sena
 |---|---|---|
 | [`convert_to_scdif.py`](convert_to_scdif.py) | Converts non-standard IQ exports (pipe-delimited, header row, line breaks inside fields) into standard SCDIF | Local or HPC (Python 3, no packages) |
 | [`iq_to_bigquery.py`](iq_to_bigquery.py) | Converts SCDIF / Archive Format exports into BigQuery tables and Looker Studio-ready views | Local (Google Cloud) |
-| [`pii/`](pii/) | IQ policy files for the PII pipeline (copies; see below) | HPC |
+| [`pii/`](pii/) | Older copies of the IQ PII files. Use `../pii/pii_pipeline/` instead (see below) | — |
 
 **Exports contain personal information.** Keep originals and working files off OneDrive and other synced folders, and redact before loading anything anywhere shared (see [`../pii/pii_pipeline`](../pii/pii_pipeline/)).
 
@@ -94,4 +94,4 @@ Values beyond the end of a layout are kept in an `extra_fields` column, so nothi
 
 ## pii/
 
-`iq_field_policy.csv`, `iq_policy.py`, `iq_analyze_pipeline.py`, `iq_anonymize_pipeline.py` and their `.script` files are the IQ branch of the PII pipeline. They are **identical copies** of the files in [`../pii/pii_pipeline/`](../pii/pii_pipeline/), and they won't run from here on their own because they need `analyze_pipeline.py` and `anonymize_pipeline.py` in the same folder. Use the complete set in `pii/pii_pipeline/`, following [its README](../pii/pii_pipeline/README.txt).
+`iq_field_policy.csv`, `iq_policy.py`, `iq_analyze_pipeline.py`, `iq_anonymize_pipeline.py` and their `.script` files are the IQ branch of the PII pipeline. They are **older copies** of the files in [`../pii/pii_pipeline/`](../pii/pii_pipeline/): the `.script` files here still point at another user's folders. They also won't run from here on their own, because they need `analyze_pipeline.py` and `anonymize_pipeline.py` in the same folder. Use the complete set in `pii/pii_pipeline/`, following [its README](../pii/pii_pipeline/README.txt).
