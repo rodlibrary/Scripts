@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=iq_anonymize_pii
-#SBATCH --output=/data/hartwigd/pii/results/iq_anonymize_%j.log
-#SBATCH --error=/data/hartwigd/pii/results/iq_anonymize_%j.err
+#SBATCH --output=/data/$USER/pii/results/iq_anonymize_%j.log
+#SBATCH --error=/data/$USER/pii/results/iq_anonymize_%j.err
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -29,12 +29,12 @@
 #     keep_names     -> PERSON         (same as "names"; kept for older commands)
 #
 # Examples:
-#   sbatch iq_anonymize.script /data/hartwigd/pii/iq_results/pii_results_123.csv
-#   sbatch iq_anonymize.script /data/hartwigd/pii/iq_results/pii_results_123.csv names,dates
-#   sbatch iq_anonymize.script /data/hartwigd/pii/iq_results/pii_results_123.csv none my_policy.csv
+#   sbatch iq_anonymize.script /data/$USER/pii/iq_results/pii_results_123.csv
+#   sbatch iq_anonymize.script /data/$USER/pii/iq_results/pii_results_123.csv names,dates
+#   sbatch iq_anonymize.script /data/$USER/pii/iq_results/pii_results_123.csv none my_policy.csv
 #
-# Output goes to /data/hartwigd/pii/iq_anonymize when nothing is kept, otherwise
-# to /data/hartwigd/pii/iq_anonymize_keep_<types>. A policy file other than
+# Output goes to /data/$USER/pii/iq_anonymize when nothing is kept, otherwise
+# to /data/$USER/pii/iq_anonymize_keep_<types>. A policy file other than
 # iq_field_policy.csv adds its name, e.g. iq_anonymize_my_policy, so runs with
 # different settings never overwrite each other.
 PII_RESULTS_CSV="${1:?Usage: sbatch iq_anonymize.script <pii_results.csv> [types-to-keep|none] [policy.csv]}"
@@ -58,15 +58,15 @@ echo "Job started at: $(date)"
 # Create the log/results directory if it does not exist.
 # NOTE: this needs to exist *before* sbatch is run, since SLURM opens the
 # --output/--error log files at job start, before this line ever executes.
-mkdir -p /data/hartwigd/pii/results
+mkdir -p /data/$USER/pii/results
 
 # Activate your virtual environment
-VENV="/data/hartwigd/pve"
+VENV="/data/$USER/pve"
 source "$VENV/bin/activate"
 
 # Define input/output paths
-INPUT_DIR="/data/hartwigd/pii"
-OUTPUT_BASE="/data/hartwigd/pii/iq_anonymize"
+INPUT_DIR="/data/$USER/pii"
+OUTPUT_BASE="/data/$USER/pii/iq_anonymize"
 POLICY_NAME="$(basename "$POLICY_ARG" .csv)"
 if [ "$POLICY_NAME" != "iq_field_policy" ]; then
     OUTPUT_BASE="${OUTPUT_BASE}_${POLICY_NAME}"
