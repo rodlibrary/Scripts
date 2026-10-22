@@ -6,6 +6,9 @@ Tools for constituent-correspondence exports from Intranet Quorum and other Sena
 |---|---|---|
 | [`convert_to_scdif.py`](convert_to_scdif.py) | Converts non-standard IQ exports (pipe-delimited, header row, line breaks inside fields) into standard SCDIF | Local or HPC (Python 3, no packages) |
 | [`iq_to_bigquery.py`](iq_to_bigquery.py) | Converts SCDIF / Archive Format exports into BigQuery tables and Looker Studio-ready views | Local (Google Cloud) |
+| [`generate_scdif.py`](generate_scdif.py) | Generates synthetic SCDIF files (no real data) for testing imports and the pipelines above | Local or HPC (Python 3.8+, no packages) |
+| [`validate_scdif.py`](validate_scdif.py) | Checks `generate_scdif.py` output: row and field counts, unique IDs, links between record types | Local or HPC (Python 3, no packages) |
+| [`scdif_sample_150k.zip`](scdif_sample_150k.zip) | Ready-made synthetic sample (~150,000 rows, all 35 record types) | — |
 | [`pii/`](pii/) | Older copies of the IQ PII files. Use `../pii/pii_pipeline/` instead (see below) | — |
 
 **Exports contain personal information.** Keep originals and working files off OneDrive and other synced folders, and redact before loading anything anywhere shared (see [`../pii/pii_pipeline`](../pii/pii_pipeline/)).
@@ -89,6 +92,69 @@ python iq_to_bigquery.py convert scdif export/*.txt --out staged/ --layout layou
 ```
 
 Values beyond the end of a layout are kept in an `extra_fields` column, so nothing is silently dropped.
+
+---
+
+## generate_scdif.py
+
+Makes synthetic SCDIF exports for testing imports (e.g. CCDT), `iq_to_bigquery.py` and the PII pipeline without touching real constituent data. **Everything is made up:** names come from generic lists, emails use the reserved `example.com/.org/.net` domains, and phone numbers use the fictional 555-01xx range.
+
+Output looks like a real IQ export: one tab-delimited file per record type (`out_1a.dat` … `out_8a.dat`, 35 types), latin-1, CRLF line endings, no header row, plus a `manifest.json` with the expected row counts. IDs link up across files the way they do in real exports (every child row points at an existing person, communication, workflow, household, document or code), and the same `--seed` and `--total-records` always give the same files.
+
+A small share of rows (`--quirk-rate`, 0.5% by default) get the defects seen in real exports, so importers get tested against them: dropped trailing fields, blank lines, `*****` separator lines, quoted fields, LF-only line endings and very long free-text values. The first line of every file is always clean, so delimiter detection isn't thrown off.
+
+**Run**
+
+```bash
+# Estimate rows per record type without writing anything
+python3 generate_scdif.py --out-dir ./scdif_data --plan
+
+# Generate (default is 15 million rows in total)
+python3 generate_scdif.py --out-dir ./scdif_data --total-records 2000000 --seed 7
+
+# Split large record types into files of at most 500,000 rows (out_2a_001.dat, out_2a_002.dat, …)
+python3 generate_scdif.py --out-dir ./scdif_data --max-rows-per-file 500000
+```
+
+| Option | Meaning | Default |
+|---|---|---|
+| `--out-dir` | Folder for the `.dat` files and `manifest.json` | — |
+| `--total-records` | Total rows across **all** record types (lands within about 2%; exact figure in `manifest.json`) | `15000000` |
+| `--seed` | Random seed; same seed, same files | `1` |
+| `--workers` | Processes to use; doesn't change the output | All CPUs |
+| `--quirk-rate` | Share of rows given a real-world defect (`0` turns them off) | `0.005` |
+| `--max-rows-per-file` | Split each record type into files of at most this many rows | No split |
+| `--plan` | Only print the estimated plan | Off |
+
+Because the files have no header row, import them into a collection flagged as CMS so line 1 isn't skipped.
+
+**Sample data:** [`scdif_sample_150k.zip`](scdif_sample_150k.zip) is the output of `--total-records 150000` with the default seed and quirk rate (151,715 rows, 8,244 people). Unzip it to try the tools without generating anything.
+
+---
+
+## validate_scdif.py
+
+Checks a folder written by `generate_scdif.py` (or the unzipped sample) and exits with status 1 if anything is wrong. It streams the files, so it stays at a few hundred MB of memory even at 15 million rows.
+
+It checks:
+
+- row counts per file against `manifest.json`
+- the number of fields in every row (and against a field policy CSV, if given)
+- that the first line of every file is clean and tab-delimited
+- that Person, Address, Communication, Workflow, Household, Document and Event IDs are unique
+- that every child row points at a real parent (and at the same person, where the parent belongs to one)
+- that codes and staff IDs exist in the 8A code tables
+
+**Run**
+
+```bash
+python3 validate_scdif.py --data-dir ./scdif_data
+python3 validate_scdif.py --data-dir ./scdif_data --policy ../pii/pii_pipeline/iq_field_policy.csv
+```
+
+`manifest.json` must be in the folder, so this only works on generated data, not on real exports.
+
+**Note:** the field policy doesn't have rows for record type **1G** yet, so `--policy` reports one failure (`1G field count 24 vs policy 0`) even on good data. Without `--policy`, the sample passes all 115 checks.
 
 ---
 
