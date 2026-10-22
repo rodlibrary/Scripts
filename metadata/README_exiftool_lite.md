@@ -1,10 +1,7 @@
 # exiftool_lite.py
 
 A single-file Python tool for reading, writing, and editing image metadata,
-inspired by [ExifTool](https://exiftool.org/) (the "sourceforge" link in your
-message points to ExifTool's old SourceForge mirror — the project has since
-moved to exiftool.org, but the CLI syntax this script mirrors is the same one
-you'd remember from either).
+inspired by [ExifTool](https://exiftool.org/) and using the same command-line syntax.
 
 ## What it covers
 
