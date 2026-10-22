@@ -43,7 +43,7 @@ mkdir -p "$OUTPUT_DIR" "$LOG_DIR"
 
 # ---- (Optional) activate environment with ocrmypdf --------------------
 module load tesseract-ocr
-source /data/username/pve/bin/activate   # if installed in a virtualenv
+source /data/$USER/pve/bin/activate   # if installed in a virtualenv
 
 
 command -v ocrmypdf >/dev/null 2>&1 || {
