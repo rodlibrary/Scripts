@@ -31,14 +31,3 @@ Each folder has its own README with setup steps, commands and options. Open a fo
 Run any Python script with `--help` to see all of its options.
 
 **HPC scripts** (`.script`, `.slurm`) run on UNI's High Performance Computing system. Most use a Python environment in `/data/<your catID>/pve`. Each README shows how to create it, which lines to edit for your catID, and the `sbatch` command to submit the job.
-
-## Keep secrets out of this repository
-
-This repository is public. Never commit API keys, Hugging Face tokens, passwords or `credentials.properties` files. Set keys in Terminal (`$env:GEMINI_API_KEY="..."`) or keep them in a private file on the HPC, and edit tokens only in the copy you upload, never in the copy on GitHub. Don't commit real PII, either. The `pii/presidio_review/sample` files are made up.
-
-## Adding a script
-
-1. Put it in the folder that matches what it does, or create a new folder.
-2. Add a short description at the top of the script: what it does, what it needs, and an example command.
-3. Add a section to that folder's README.
-4. If you created a new folder, add a row to the table above.
