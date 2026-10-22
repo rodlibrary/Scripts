@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=iq_analyze_pii
-#SBATCH --output=/data/$USER/pii/results/iq_analyze_%j.log
-#SBATCH --error=/data/$USER/pii/results/iq_analyze_%j.err
+#SBATCH --output=/data/%u/pii/results/iq_analyze_%j.log
+#SBATCH --error=/data/%u/pii/results/iq_analyze_%j.err
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
