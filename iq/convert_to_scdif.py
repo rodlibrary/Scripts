@@ -30,7 +30,7 @@ Usage
   python convert_to_scdif.py --inspect /path/to/export.txt
 
   # 2. Convert (one or more files):
-  python convert_to_scdif.py /path/to/export.txt --output_dir /data/hartwigd/pii
+  python convert_to_scdif.py /path/to/export.txt --output_dir /data/$USER/pii
 
   Output:  <output_dir>/<name>_scdif.dat          tab-delimited SCDIF, CRLF
            <report_dir>/<name>_conversion_report.txt
@@ -40,7 +40,7 @@ Usage
   not picked up by the PII analysis.
 
 Keep the ORIGINAL export outside the folder the PII analysis scans (e.g.
-not in /data/hartwigd/pii), or it will also be analyzed as plain text.
+not in /data/$USER/pii), or it will also be analyzed as plain text.
 
 Only the Python standard library is needed.
 """
