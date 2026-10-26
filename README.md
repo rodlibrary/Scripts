@@ -1,6 +1,6 @@
 # Scripts
 
-PowerShell, Python and SLURM scripts for batch processing files as part of archival processing and accessibility work at Rod Library, University of Northern Iowa.
+PowerShell, Python and SLURM scripts for batch processing files as part of archival processing, web archiving and accessibility work at Rod Library, University of Northern Iowa.
 
 Each folder has its own README with setup steps, commands and options. Open a folder to see it.
 
@@ -19,6 +19,7 @@ Each folder has its own README with setup steps, commands and options. Open a fo
 | [**transcription**](transcription/) | Speech to text with Whisper / WhisperX (with speaker labels) | HPC |
 | [**video**](video/) | Multi-stage AV collection pipeline on the HPC (in progress) | HPC |
 | [**virus_scan**](virus_scan/) | Scan a folder with Microsoft Defender and export detections to CSV | Windows |
+| [**web_archiving**](web_archiving/) | Find uni.edu PDFs missing from Archive-It, review them in Excel and export seed lists for Archive-It | Local |
 
 ## Getting started
 
