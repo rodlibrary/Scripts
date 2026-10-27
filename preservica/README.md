@@ -49,7 +49,7 @@ The workflow [`.github/workflows/preservica-metadata-export.yml`](../.github/wor
    |---|---|
    | `PRESERVICA_USERNAME` | Service account username |
    | `PRESERVICA_PASSWORD` | Service account password |
-   | `PRESERVICA_TENANT` | `UNI` |
+   | `PRESERVICA_TENANT` | `UNIOWA` |
    | `PRESERVICA_SERVER` | `us.preservica.com` |
 
 2. Optional: on the **Variables** tab, add `PRESERVICA_FOLDER` with a folder UUID to export just that folder. Without it, the whole repository is exported.
