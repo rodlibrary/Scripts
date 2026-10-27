@@ -126,14 +126,17 @@ def main():
 
     for attempt in range(1, 4):
         try:
-            count = 0
+            rows = [[cell(row.get(c)) for c in columns]
+                    for row in client.search_index_filter_list(
+                        args.query, args.page_size, filters)]
+            # Sort by reference so repeated exports list records in the same
+            # order and a diff of two exports shows only real changes.
+            rows.sort(key=lambda r: r[0])
             with open(tmp_path, "w", newline="", encoding="utf-8-sig") as fh:
                 writer = csv.writer(fh)
                 writer.writerow(columns)
-                for row in client.search_index_filter_list(
-                        args.query, args.page_size, filters):
-                    writer.writerow([cell(row.get(c)) for c in columns])
-                    count += 1
+                writer.writerows(rows)
+            count = len(rows)
             break
         except Exception as exc:
             if attempt == 3:

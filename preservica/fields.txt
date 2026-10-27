@@ -1,0 +1,15 @@
+# Fields exported by preservica_search_export.py and the scheduled GitHub workflow.
+# One indexed field per line, in the column order you want.
+# All available fields are listed in indexed_fields.csv.
+# "field = value" keeps only records with that value; "field = *" keeps records where it has any value.
+xip.title
+xip.description
+xip.parent_ref
+xip.identifier
+xip.security_descriptor
+xip.created
+xip.updated
+oai_dc.creator
+oai_dc.date
+oai_dc.subject
+oai_dc.rights
