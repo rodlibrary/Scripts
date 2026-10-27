@@ -2,7 +2,7 @@
 
 | File | What it does | Runs on |
 |---|---|---|
-| [`downloadCount.py`](downloadCount.py) | Counts downloads of each asset from Preservica's audit logs and writes the count into the asset's metadata | Any computer with Python 3 and Preservica API access |
+
 
 ## preservica_search_export.py
 Setup (one time)
@@ -20,7 +20,7 @@ Whole repository, folders included: add --type all
 -Fields with several values, such as subjects, go into one cell separated by |. The CSV opens correctly in Excel, accented characters included.
 -The script writes a .partial file first and renames it only when the export finishes. A scheduled run that fails never leaves a half-finished CSV with the real name.
 
-
+| [`downloadCount.py`](downloadCount.py) | Counts downloads of each asset from Preservica's audit logs and writes the count into the asset's metadata | Any computer with Python 3 and Preservica API access |
 ## downloadCount.py
 
 1. Signs in to Preservica with [pyPreservica](https://pypreservica.readthedocs.io/).
