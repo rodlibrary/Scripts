@@ -56,6 +56,8 @@ The workflow [`.github/workflows/preservica-metadata-export.yml`](../.github/wor
 
 **Run it now:** go to **Actions > Preservica metadata export > Run workflow**. You can enter a different folder or record type for that one run. Each run shows a summary with the record count, and the log shows any errors.
 
+**If a run finds no records**, it fails and leaves the previous CSV unchanged. The run summary then shows how many records the account can see in total, how many are under the chosen folder, and how many match any `field = value` lines in `fields.txt`, which shows whether the folder, the account's access or a filter is the cause. `PRESERVICA_FOLDER` accepts a bare reference, `SO_<reference>`, or a link copied from Preservica.
+
 **Change the schedule:** edit the `cron` line in the workflow file. GitHub uses UTC: `17 11 * * 1` means Mondays at 11:17 UTC.
 
 

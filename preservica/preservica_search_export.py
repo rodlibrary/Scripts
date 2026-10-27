@@ -42,8 +42,11 @@ import os
 import sys
 import time
 
-from pyPreservica import ContentAPI
+import re
 
+from pyPreservica import ContentAPI, EntityAPI
+
+UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 MULTI_VALUE_SEP = " | "
 TYPE_FILTERS = {"assets": "IO", "folders": "SO", "all": ""}
 log = logging.getLogger("preservica_search_export")
@@ -101,9 +104,20 @@ def main():
                     help="Output CSV. {date} becomes YYYY-MM-DD.")
     ap.add_argument("--credentials", default="credentials.properties")
     ap.add_argument("--page-size", type=int, default=100)
+    ap.add_argument("--allow-empty", action="store_true",
+                    help="Write the CSV even if no records match (normally an empty result is an error).")
     args = ap.parse_args()
-
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    if args.folder:
+        # Accept a pasted Preservica link or "SO_<uuid>" as well as a bare reference
+        found = UUID_RE.search(args.folder)
+        if not found:
+            sys.exit(f"--folder / PRESERVICA_FOLDER doesn't contain a Preservica reference: {args.folder!r}")
+        if found.group(0) != args.folder.strip():
+            log.info("Using folder reference %s from %r", found.group(0), args.folder)
+        args.folder = found.group(0).lower()
+
     client = ContentAPI(credentials_path=args.credentials)
 
     if args.list_fields:
@@ -145,9 +159,69 @@ def main():
             log.warning("Search failed (%s); retrying from the start in %ss", exc, 30 * attempt)
             time.sleep(30 * attempt)
 
+    if count == 0 and not args.allow_empty:
+        os.remove(tmp_path)  # keep the previous export rather than replacing it with an empty one
+        explain_empty(client, args.query, selected, args.folder, TYPE_FILTERS[args.type],
+                      args.credentials)
+        return 2
+
     os.replace(tmp_path, out_path)  # only replace the file once the export is complete
     log.info("Wrote %d rows to %s", count, out_path)
     return 0
+
+
+def report(lines):
+    """Log diagnostic lines and, on GitHub Actions, add them to the run summary."""
+    for line in lines:
+        log.error(line)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as fh:
+            fh.write("### No records were exported\n\n" + "\n".join(f"- {l}" for l in lines) + "\n")
+
+
+def explain_empty(client, query, selected, folder, doc_type, credentials):
+    """Run each part of the search on its own to find which part matches nothing."""
+    def hits(f):
+        try:
+            return client.search_index_filter_hits(query, {"xip.reference": "", **f})
+        except Exception as exc:
+            log.warning("Check failed: %s", exc)
+            return None
+
+    lines = ["The search found no records, so the previous CSV was left unchanged."]
+    visible = hits({})
+    lines.append(f"Records this account can see in total: {visible}.")
+    if visible == 0:
+        lines.append("The account logged in but can't see any records. Ask your Preservica "
+                     "administrator to give it read access (its roles and security tags) "
+                     "to the records you want to export.")
+        report(lines)
+        return
+
+    if doc_type:
+        n = hits({"xip.document_type": doc_type})
+        kind = "assets" if doc_type == "IO" else "folders"
+        lines.append(f"Of those, {kind}: {n}.")
+
+    if folder:
+        n = hits({"xip.parent_hierarchy": folder})
+        lines.append(f"Records under folder {folder}: {n}.")
+        if n == 0:
+            try:
+                f = EntityAPI(credentials_path=credentials).folder(folder)
+                lines.append(f'That reference is the folder "{f.title}", but the search index '
+                             "has nothing under it that this account can see.")
+            except Exception:
+                lines.append("No folder with that reference is visible to this account. Check the "
+                             "PRESERVICA_FOLDER value (or --folder): it should be a folder's "
+                             "reference, not an asset's, and not a link to the public access site.")
+
+    restricting = {k: v for k, v in selected.items() if v}
+    for field, value in restricting.items():
+        n = hits({field: value})
+        lines.append(f'Records matching "{field} = {value}" in fields.txt: {n}.')
+    report(lines)
 
 
 if __name__ == "__main__":
