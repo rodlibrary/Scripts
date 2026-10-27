@@ -14,11 +14,11 @@ Setup (one time)
 
 Running it
 
-Everything under one folder: python preservica_search_export.py --folder <folder-UUID>
+-Everything under one folder: python preservica_search_export.py --folder <folder-UUID>
 Whole repository, folders included: add --type all
-Only records with a particular value: write a line like xip.security_descriptor = open in fields.txt. To keep only records where a field has a value, use = *.
-Fields with several values, such as subjects, go into one cell separated by |. The CSV opens correctly in Excel, accented characters included.
-The script writes a .partial file first and renames it only when the export finishes. A scheduled run that fails never leaves a half-finished CSV with the real name.
+-Only records with a particular value: write a line like xip.security_descriptor = open in fields.txt. To keep only records where a field has a value, use = *.
+-Fields with several values, such as subjects, go into one cell separated by |. The CSV opens correctly in Excel, accented characters included.
+-The script writes a .partial file first and renames it only when the export finishes. A scheduled run that fails never leaves a half-finished CSV with the real name.
 
 
 ## downloadCount.py
