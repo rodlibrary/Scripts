@@ -12,6 +12,10 @@ Usage examples:
     python find_scholarworks_links.py --exclude-host calendar.uni.edu --ignore-query
     python find_scholarworks_links.py --retries 3 --max-host-failures 10
 
+Excluded sites:
+    aspace.library.uni.edu (ArchivesSpace) is always skipped: links to it are
+    ignored and never fetched. Add more with --exclude-host.
+
 Failure handling:
     Each page is retried (--retries, with doubling --retry-backoff) on timeouts,
     connection errors, HTTP 429 and 5xx. If --max-host-failures pages on the same
@@ -47,6 +51,12 @@ from bs4 import BeautifulSoup
 
 ROOT_DOMAIN = "uni.edu"
 TARGET_HOST = "scholarworks.uni.edu"
+
+# Hosts that are never crawled. Links to them are ignored and the crawl moves on.
+# ArchivesSpace generates a huge number of finding-aid pages that slow the crawl.
+ALWAYS_EXCLUDED_HOSTS = {
+    "aspace.library.uni.edu",
+}
 USER_AGENT = "UNI-ScholarWorks-LinkAudit/1.0 (+https://www.uni.edu/)"
 
 # File types that are never HTML pages, so there is no point downloading them.
@@ -253,11 +263,14 @@ def crawl(args):
 
     start_urls = [normalize(u, args.ignore_query) for u in args.start]
     allowed_hosts = {host_of(u) for u in start_urls}
-    excluded_hosts = {h.lower() for h in args.exclude_host} | {TARGET_HOST}
+    excluded_hosts = {h.lower() for h in args.exclude_host} | {TARGET_HOST} | ALWAYS_EXCLUDED_HOSTS
 
     def scoped(u):
         return in_scope(u, allowed_hosts, not args.no_subdomains, excluded_hosts)
 
+    start_urls = [u for u in start_urls if host_of(u) not in excluded_hosts]
+    if not start_urls:
+        sys.exit("All --start URLs are on excluded hosts; nothing to crawl.")
     queue = deque((u, 0) for u in start_urls)
     seen = set(start_urls)
 
