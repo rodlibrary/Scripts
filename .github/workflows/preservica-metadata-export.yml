@@ -62,6 +62,7 @@ jobs:
         run: python -m pip install pyPreservica requests
 
       - name: Export metadata
+        id: export
         working-directory: preservica
         run: |
           mkdir -p exports
@@ -88,7 +89,7 @@ jobs:
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Summary
-        if: always()
+        if: steps.export.outcome == 'success'
         run: |
           f="preservica/$OUTPUT"
           if [ -f "$f" ]; then
