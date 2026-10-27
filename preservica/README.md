@@ -21,7 +21,7 @@ python -m pip install pyPreservica requests
 **Credentials:** pyPreservica reads them from a `credentials.properties` file in the folder you run the script from:
 
 ```
-username=you@uni.edu
+username=you@email
 password=your-password
 tenant=YOUR_TENANT
 server=your-server.preservica.com
