@@ -8,8 +8,12 @@
 ## preservica_search_export.py
 Setup (one time)
 
-1. Install the library: pip install pyPreservica
-2. Put the same credentials.properties file next to the script:
+1. Install the library:
+
+```powershell
+python -m pip install pyPreservica requests
+```
+3. Put the credentials.properties file next to the script:
 
 ```
 username=you@email
