@@ -9,7 +9,14 @@
 Setup (one time)
 
 1. Install the library: pip install pyPreservica
-2. Put the same credentials.properties file next to the script: username, password, server and tenant under a [credentials] header.
+2. Put the same credentials.properties file next to the script:
+
+```
+username=you@email
+password=your-password
+tenant=YOUR_TENANT
+server=your-server.preservica.com
+```
 3. Run python preservica_search_export.py --list-fields. This writes indexed_fields.csv, listing every field your Preservica instance indexes. It shows the standard xip.* fields plus whatever your metadata adds, such as oai_dc.creator.
 4. Edit fields.txt: put one field per line, in the column order you want.
 
