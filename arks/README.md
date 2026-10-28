@@ -23,7 +23,7 @@ Start from the [`arks.csv`](arks.csv) template. Column headers are case-insensit
 |---|---|---|---|
 | `identifier` | **Required** | Yes | Your local identifier. Kept in the output for traceability; it is **not** used to build the ARK. |
 | `title` | **Required** | Yes | Title or short description |
-| `naan` | Optional | No | Name Assigning Authority Number. Blank = the `--naan` value (or the script's default). |
+| `naan` | Optional | No | Name Assigning Authority Number. Blank = the `--naan` value, or `32498` if that isn't given. |
 | `shoulder` | Optional | Yes | ARK shoulder / prefix, e.g. `s3` |
 | `url` | Optional | Yes | URL the ARK should resolve to |
 | `type` | Optional | No | Resource type, e.g. Text, Image, Dataset |
@@ -37,18 +37,20 @@ The template also has `dc_path`, `dc_article`, `preservica_ref` and `status` col
 ## Run
 
 1. Copy `generate_arks.py` and [`arks.csv`](arks.csv) to Documents, then fill in `arks.csv` (at least `identifier` and `title`).
-2. Set the NAAN, either by editing `DEFAULT_NAAN` near the top of the script (it ships as `"add NAAN here"`), by filling in the `naan` column, or with `--naan` on the command line.
+2. The NAAN defaults to `32498`, so rows with a blank or missing `naan` get it automatically. To use a different NAAN, fill in the `naan` column for those rows, pass `--naan` on the command line, or edit `DEFAULT_NAAN` near the top of the script.
 3. Open Terminal in Documents and enter:
 
 ```powershell
-python generate_arks.py arks.csv output --add-checksum --master-list "path\to\ark_master_list.csv"
+python generate_arks.py arks.csv --add-checksum --master-list "path\to\ark_master_list.csv"
 ```
+
+This writes `arks_manifest.csv` and `arks_manifest.anvl` to the current folder. To use a different name, add it after the input file, e.g. `python generate_arks.py arks.csv batch_2026_10`, which writes `batch_2026_10.csv` and `batch_2026_10.anvl`.
 
 | Option | Meaning | Default |
 |---|---|---|
 | `input_csv` | The input CSV | — |
-| `output_basename` | Base name for the outputs (`<name>.csv` and `<name>.anvl`) | — |
-| `--naan` | NAAN for rows that don't supply one | `DEFAULT_NAAN` in the script |
+| `output_basename` | Optional. Base name for the outputs (`<name>.csv` and `<name>.anvl`) | `arks_manifest` |
+| `--naan` | NAAN for rows that don't supply one | `32498` |
 | `--add-checksum` | Add a NOID-style check character to each ARK | Off |
 | `--blade-length` | Length of the random blade | `10` |
 | `--master-list` | Running list of **every** ARK ever generated, used to guarantee uniqueness across runs | `ark_master_list.csv` |
@@ -61,5 +63,7 @@ python generate_arks.py arks.csv output --add-checksum --master-list "path\to\ar
 
 | File | Contents |
 |---|---|
-| `<output>.csv` | One row per input record: the ARK, a resolvable `https://n2t.net/...` link, all metadata, and a status/notes column reporting any problems |
-| `<output>.anvl` | ANVL metadata records, the format N2T/EZID import |
+| `arks_manifest.csv` | One row per input record: the ARK, a resolvable `https://n2t.net/...` link, all metadata, and a status/notes column reporting any problems |
+| `arks_manifest.anvl` | ANVL metadata records, the format N2T/EZID import |
+
+If you give a different output name, `arks_manifest` is replaced by that name in both files. Running the script again with the same output name overwrites the previous `.csv` and `.anvl` files, so rename or move them first if you want to keep them. (The master list is never overwritten; new ARKs are only appended to it.)
