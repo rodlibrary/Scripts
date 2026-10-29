@@ -21,9 +21,9 @@ INPUT CSV COLUMNS
 Column headers are case-insensitive and surrounding whitespace is ignored.
 
     naan          optional  Name Assigning Authority Number (digits only).
-                            If omitted (or blank), defaults to 32498. Override
-                            per-run with --naan, or per-row by filling in
-                            this column.
+                            If omitted (or blank), defaults automatically
+                            to 32498. Override per-run with --naan, or
+                            per-row by filling in this column.
     shoulder      optional  ARK shoulder / prefix (e.g. "s3", "z9")
     identifier    REQUIRED  Local identifier for this object. Kept for
                             provenance/traceability in the output only --
@@ -39,18 +39,40 @@ Column headers are case-insensitive and surrounding whitespace is ignored.
     format        optional  File / media format (e.g. application/pdf)
     relation      optional  Related identifier or resource
     source        optional  Source / provenance citation
+    dc_path       optional  Digital Commons path for the redirect manifest:
+                            a landing-page key (etd/123, pias/vol94/iss4/3)
+                            or a collection key (etd, pias/vol94/iss4)
+    dc_article    optional  Digital Commons file key (etd/1124) -- the
+                            article number from viewcontent.cgi, which
+                            differs from the number in the landing URL
+    preservica_ref optional Preservica reference, passed through as-is
+    status        optional  Redirect status: active, withdrawn (served as
+                            HTTP 410) or unmatched (ignored, kept for
+                            tracking). If blank: "active" when url is
+                            filled, otherwise "unmatched". "active"
+                            requires url; any other value is an error.
 
 OUTPUT
 ------
-    arks_manifest.csv   One row per input record with the generated ARK,
-                        a resolvable https://n2t.net/... URL, and all
-                        metadata, plus a status/notes column reporting
-                        any problems.
-    arks_manifest.anvl  ANVL-formatted metadata records (the format used by
-                        ARK resolvers such as N2T/EZID) suitable for import.
+    <output>.csv   One row per input record with the generated ARK,
+                   a resolvable https://n2t.net/... URL, and all metadata,
+                   plus a status/notes column reporting any problems.
+    <output>.anvl  ANVL-formatted metadata records (the format used by
+                   ARK resolvers such as N2T/EZID) suitable for import.
 
-    (The "arks_manifest" base name is the default; pass a different name as
-    the optional second argument to override it.)
+REDIRECT MANIFEST (redirects.csv)
+-----------------------------------
+    Every successfully-minted ARK is also appended to redirects.csv
+    (override with --redirects-manifest; disable with
+    --no-redirects-manifest) with exactly these columns:
+
+        dc_path, dc_article, ark, preservica_ref, target_url, status, notes
+
+    "ark" is the bare NAAN/NAME form (e.g. 32498/s3abc...), without the
+    "ark:/" prefix. "target_url" comes from the input "url" column. The
+    file is append-only; a warning is printed if a dc_path/dc_article
+    pair is already in it. With --push-to-gitlab both this file and the
+    master list are pushed.
 
 MASTER LIST (RECORDKEEPING & CROSS-RUN UNIQUENESS)
 ----------------------------------------------------
@@ -69,32 +91,62 @@ MASTER LIST (RECORDKEEPING & CROSS-RUN UNIQUENESS)
     Use --no-master-list to opt out (uniqueness is then only guaranteed
     within a single run).
 
+PUSHING THE MASTER LIST TO GITLAB
+------------------------------------
+    Pass --push-to-gitlab (with --gitlab-project namespace/project) to also
+    commit the updated master list to a GitLab project after each run, via
+    the GitLab Repository Files API (creates the file on first push,
+    updates it on every push after that -- no external HTTP library
+    required).
+
+    --gitlab-project must name a specific PROJECT (repository), not a
+    GitLab group -- a group can hold several projects, so the one to write
+    to has to be named explicitly (default: rod-library/redirects, i.e.
+    https://git.uni.edu/rod-library/redirects). --gitlab-url points at the
+    GitLab instance itself (default: https://git.uni.edu).
+
+    Requires a GitLab token (personal or project access token) with
+    'api' scope for the project, supplied via an environment
+    variable (default: GITLAB_TOKEN) -- never pass a token on the command
+    line. Example:
+
+        export GITLAB_TOKEN=glpat-...your_token...
+        python3 generate_arks.py output --push-to-gitlab --gitlab-project rod-library/redirects
+
 USAGE
 -----
-    python3 generate_arks.py input.csv
-    python3 generate_arks.py input.csv --add-checksum
-    python3 generate_arks.py input.csv --resolver https://n2t.net
-    python3 generate_arks.py input.csv --master-list /path/to/ark_master_list.csv
-    python3 generate_arks.py input.csv custom_name   # -> custom_name.csv
+    The input CSV path is optional and defaults to arks.csv in the current
+    directory; pass a different path as the first argument to override it.
+
+    python3 generate_arks.py output
+    python3 generate_arks.py output --add-checksum
+    python3 generate_arks.py output --resolver https://n2t.net
+    python3 generate_arks.py output --master-list /path/to/ark_master_list.csv
+    python3 generate_arks.py output --push-to-gitlab --gitlab-project rod-library/redirects
+    python3 generate_arks.py other_input.csv output   # override the input file
 
 Run `python3 generate_arks.py -h` for all options.
 """
 
 import argparse
+import base64
 import csv
 import datetime
+import json
 import os
 import re
 import secrets
 import string
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 # NAAN used automatically whenever a row doesn't supply its own.
 DEFAULT_NAAN = "32498"
 
-# Output files are named <basename>.csv / <basename>.anvl; by default the
-# CSV is written as arks_manifest.csv.
-DEFAULT_OUTPUT_BASENAME = "arks_manifest"
+# Input CSV path used automatically when none is given on the command line.
+DEFAULT_INPUT_CSV = "arks.csv"
 
 # Persistent, append-only record of every ARK ever generated by this script
 # (across all runs). Used both as a recordkeeping log and as the source of
@@ -107,11 +159,26 @@ MASTER_LIST_FIELDS = (
     "identifier", "title", "source_file", "row",
 )
 
+# Redirect manifest (redirects.csv): the append-only file consumed by the
+# redirect tooling. Column order must match the manifest header exactly.
+DEFAULT_REDIRECTS_MANIFEST = "redirects.csv"
+REDIRECT_FIELDS = (
+    "dc_path", "dc_article", "ark", "preservica_ref", "target_url",
+    "status", "notes",
+)
+# active     -> redirect to target_url
+# withdrawn  -> served as HTTP 410 (target_url may be blank)
+# unmatched  -> ignored by the redirect service, kept for tracking
+REDIRECT_STATUSES = ("active", "withdrawn", "unmatched")
+
 REQUIRED_FIELDS = ("identifier", "title")
 OPTIONAL_FIELDS = (
     "shoulder", "url", "type", "commitment", "format", "relation", "source",
 )
-ALL_FIELDS = ("naan",) + OPTIONAL_FIELDS[:1] + ("identifier", "title") + OPTIONAL_FIELDS[1:]
+ALL_FIELDS = (
+    ("naan",) + OPTIONAL_FIELDS[:1] + ("identifier", "title") + OPTIONAL_FIELDS[1:]
+    + ("dc_path", "dc_article", "preservica_ref")
+)
 
 # Base-32 alphabet used by the NOID/ARK check-character algorithm.
 _XDIGIT_ALPHABET = "0123456789bcdfghjkmnpqrstvwxyz"
@@ -263,11 +330,13 @@ def process_row(
     blade_length: int = 10,
 ) -> dict:
     notes = []
+    routine_notes = []  # informational only; kept out of the redirect manifest
     row = {k: (v or "").strip() for k, v in row.items()}
 
     if not row.get("naan"):
         row["naan"] = default_naan
         notes.append(f"naan not supplied; defaulted to {default_naan}")
+        routine_notes.append(notes[-1])
 
     missing = [f for f in REQUIRED_FIELDS if not row.get(f)]
     if missing:
@@ -275,6 +344,32 @@ def process_row(
             "row": row_num,
             "status": "ERROR",
             "notes": f"missing required field(s): {', '.join(missing)}",
+            "ark": "",
+            "resolvable_url": "",
+            **{f: row.get(f, "") for f in ALL_FIELDS},
+        }
+
+    # Redirect-manifest status. Optional in the input; when omitted it is
+    # inferred: a row with a target URL is "active", otherwise "unmatched".
+    redirect_status = row.get("status", "").lower()
+    if not redirect_status:
+        redirect_status = "active" if row.get("url") else "unmatched"
+        notes.append(f"status not supplied; set to {redirect_status}")
+        routine_notes.append(notes[-1])
+    problem = None
+    if redirect_status not in REDIRECT_STATUSES:
+        problem = (
+            f"invalid status '{redirect_status}' "
+            f"(expected one of: {', '.join(REDIRECT_STATUSES)})"
+        )
+    elif redirect_status == "active" and not row.get("url"):
+        problem = "status 'active' requires a url (target_url)"
+    if problem:
+        # Rejected before minting so no ARK is consumed for a bad row.
+        return {
+            "row": row_num,
+            "status": "ERROR",
+            "notes": problem,
             "ark": "",
             "resolvable_url": "",
             **{f: row.get(f, "") for f in ALL_FIELDS},
@@ -312,6 +407,7 @@ def process_row(
         "row": row_num,
         "status": "OK" if not notes else "OK (with notes)",
         "notes": "; ".join(notes),
+        "manifest_notes": "; ".join(n for n in notes if n not in routine_notes),
         "ark": ark,
         "resolvable_url": resolvable_url,
         "naan": row["naan"],
@@ -325,14 +421,150 @@ def process_row(
         "format": row.get("format", ""),
         "relation": row.get("relation", ""),
         "source": row.get("source", ""),
+        "dc_path": row.get("dc_path", ""),
+        "dc_article": row.get("dc_article", ""),
+        "preservica_ref": row.get("preservica_ref", ""),
+        "redirect_status": redirect_status,
     }
+
+
+def append_redirects_manifest(manifest_path: str, results: list[dict]) -> int:
+    """
+    Append one row per successfully-minted ARK to the redirect manifest
+    (creating it, with a header, if needed). Append-only: existing rows
+    are never rewritten. The `ark` column holds the bare "NAAN/NAME" form
+    (no "ark:/" prefix). Warns on stderr if a dc_path/dc_article pair is
+    already present, since one item should normally have one ARK.
+    """
+    new_rows = [r for r in results if r["status"] != "ERROR"]
+    if not new_rows:
+        return 0
+
+    seen = set()
+    file_exists = os.path.exists(manifest_path)
+    if file_exists:
+        with open(manifest_path, newline="", encoding="utf-8-sig") as f:
+            for existing in csv.DictReader(f):
+                seen.add((existing.get("dc_path", ""), existing.get("dc_article", "")))
+
+    with open(manifest_path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=REDIRECT_FIELDS)
+        if not file_exists:
+            writer.writeheader()
+        for r in new_rows:
+            key = (r.get("dc_path", ""), r.get("dc_article", ""))
+            if key != ("", "") and key in seen:
+                print(
+                    f"Warning: dc_path='{key[0]}' dc_article='{key[1]}' "
+                    f"(row {r['row']}) is already in {manifest_path}; "
+                    f"a second ARK was added.",
+                    file=sys.stderr,
+                )
+            seen.add(key)
+            writer.writerow({
+                "dc_path": r.get("dc_path", ""),
+                "dc_article": r.get("dc_article", ""),
+                "ark": r["ark"].split("ark:/", 1)[1],
+                "preservica_ref": r.get("preservica_ref", ""),
+                "target_url": r.get("url", ""),
+                "status": r["redirect_status"],
+                "notes": r.get("manifest_notes", ""),
+            })
+    return len(new_rows)
+
+
+def push_file_to_gitlab(
+    file_path: str,
+    gitlab_url: str,
+    project: str,
+    dest_path: str,
+    branch: str,
+    token: str,
+    commit_message: str,
+) -> str:
+    """
+    Create or update `dest_path` in the GitLab project `project` (a
+    "namespace/project" or "group/subgroup/project" path, e.g.
+    "rod-library/redirects") on `branch` with the current contents of
+    `file_path`, via the GitLab Repository Files API (stdlib-only -- no
+    external HTTP library required). `gitlab_url` is the GitLab instance's
+    base URL (e.g. "https://git.uni.edu").
+
+    A GitLab *group* URL (such as .../groups/redirects) is not itself a
+    place files can be pushed to -- a group can hold several projects, so
+    the caller must supply the specific project within it.
+
+    Looks up whether the file already exists first, so this correctly
+    updates an existing file (PUT) instead of trying to create one that's
+    already there (which the GitLab API rejects).
+
+    Returns the file's web URL on success. Raises RuntimeError with a
+    readable message (never containing the token) on any failure.
+    """
+    project_id = urllib.parse.quote(project, safe="")
+    file_id = urllib.parse.quote(dest_path, safe="")
+    api_base = (
+        f"{gitlab_url.rstrip('/')}/api/v4/projects/{project_id}"
+        f"/repository/files/{file_id}"
+    )
+    headers = {
+        "PRIVATE-TOKEN": token,
+        "Content-Type": "application/json",
+        "User-Agent": "generate_arks.py",
+    }
+
+    file_exists = False
+    lookup_req = urllib.request.Request(
+        f"{api_base}?ref={urllib.parse.quote(branch, safe='')}",
+        headers=headers, method="GET",
+    )
+    try:
+        with urllib.request.urlopen(lookup_req) as resp:
+            resp.read()
+            file_exists = True
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise RuntimeError(
+                f"lookup of existing file failed ({e.code}): "
+                f"{e.read().decode('utf-8', 'ignore')}"
+            ) from e
+        # 404 just means the file doesn't exist in the project yet.
+
+    with open(file_path, "rb") as f:
+        content_b64 = base64.b64encode(f.read()).decode("ascii")
+
+    body = {
+        "branch": branch,
+        "content": content_b64,
+        "encoding": "base64",
+        "commit_message": commit_message,
+    }
+
+    req = urllib.request.Request(
+        api_base,
+        data=json.dumps(body).encode("utf-8"),
+        headers=headers,
+        method="PUT" if file_exists else "POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            resp.read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(
+            f"push failed ({e.code}): {e.read().decode('utf-8', 'ignore')}"
+        ) from e
+
+    return (
+        f"{gitlab_url.rstrip('/')}/{project}/-/blob/{branch}/{dest_path}"
+    )
 
 
 def write_csv(results: list[dict], output_csv: str) -> None:
     fieldnames = [
         "row", "status", "ark", "resolvable_url", "naan", "shoulder",
         "ark_blade", "identifier", "title", "url", "type", "commitment",
-        "format", "relation", "source", "notes",
+        "format", "relation", "source", "dc_path", "dc_article",
+        "preservica_ref", "redirect_status", "notes",
     ]
     with open(output_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -370,16 +602,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Batch-generate ARKs and ANVL metadata from a CSV file."
     )
-    parser.add_argument("input_csv", help="Path to the input CSV file")
+    parser.add_argument(
+        "input_csv",
+        nargs="?",
+        default=DEFAULT_INPUT_CSV,
+        help=f"Path to the input CSV file (default: {DEFAULT_INPUT_CSV})",
+    )
     parser.add_argument(
         "output_basename",
-        nargs="?",
-        default=DEFAULT_OUTPUT_BASENAME,
-        help=(
-            "Base path/name for outputs (produces <name>.csv and <name>.anvl). "
-            f"Default: {DEFAULT_OUTPUT_BASENAME} "
-            f"(i.e. {DEFAULT_OUTPUT_BASENAME}.csv)"
-        ),
+        help="Base path/name for outputs (produces <name>.csv and <name>.anvl)",
     )
     parser.add_argument(
         "--resolver",
@@ -431,6 +662,84 @@ def main() -> None:
             "recommended for real recordkeeping -- mainly useful for tests."
         ),
     )
+    parser.add_argument(
+        "--redirects-manifest",
+        default=DEFAULT_REDIRECTS_MANIFEST,
+        help=(
+            "Path to the append-only redirect manifest (columns: "
+            + ", ".join(REDIRECT_FIELDS)
+            + f"). New ARKs are appended after each run. (default: "
+            f"{DEFAULT_REDIRECTS_MANIFEST})"
+        ),
+    )
+    parser.add_argument(
+        "--no-redirects-manifest",
+        action="store_true",
+        help="Do not write or push the redirect manifest.",
+    )
+    parser.add_argument(
+        "--gitlab-manifest-path",
+        default=None,
+        help=(
+            "Path within the project for the redirect manifest (default: "
+            "same filename as --redirects-manifest, at the project root)."
+        ),
+    )
+    parser.add_argument(
+        "--push-to-gitlab",
+        action="store_true",
+        help=(
+            "After updating the master list, push it to a GitLab project "
+            "via the GitLab Repository Files API. Requires --gitlab-project "
+            "and a token (see --gitlab-token-env). Incompatible with "
+            "--no-master-list."
+        ),
+    )
+    parser.add_argument(
+        "--gitlab-url",
+        default="https://git.uni.edu",
+        help="Base URL of the GitLab instance (default: https://git.uni.edu).",
+    )
+    parser.add_argument(
+        "--gitlab-project",
+        default="rod-library/redirects",
+        help=(
+            "Target project as 'namespace/project' (default: "
+            "rod-library/redirects). Note this must be a specific project, "
+            "not a group -- e.g. the 'rod-library' GROUP can hold several "
+            "projects, so a project within it (such as 'rod-library/redirects') "
+            "has to be named explicitly."
+        ),
+    )
+    parser.add_argument(
+        "--gitlab-path",
+        default=None,
+        help=(
+            "Path within the project to write the master list to (default: "
+            "same filename as --master-list, written to the project root)."
+        ),
+    )
+    parser.add_argument(
+        "--gitlab-branch",
+        default="main",
+        help=(
+            "Branch to commit to (default: main -- some GitLab projects "
+            "default to 'master' instead, so check yours if the push fails "
+            "with a branch-not-found error)."
+        ),
+    )
+    parser.add_argument(
+        "--gitlab-token-env",
+        default="GITLAB_TOKEN",
+        help=(
+            "Name of the environment variable holding a GitLab token "
+            "(personal or project access token) with 'api' "
+            "scope for the project (default: GITLAB_TOKEN). The token is "
+            "read from the environment only -- never pass it as a "
+            "command-line argument, where it could leak into shell history "
+            "or process listings."
+        ),
+    )
     args = parser.parse_args()
 
     rows = read_rows(args.input_csv)
@@ -452,9 +761,65 @@ def main() -> None:
     write_csv(results, output_csv)
     write_anvl(results, output_anvl)
 
+    appended = 0
     if not args.no_master_list:
         appended = append_master_list(args.master_list, results, args.input_csv)
         print(f"Recorded {appended} new ARK(s) in master list {args.master_list}")
+
+    manifest_appended = 0
+    if not args.no_redirects_manifest:
+        manifest_appended = append_redirects_manifest(args.redirects_manifest, results)
+        print(
+            f"Appended {manifest_appended} row(s) to redirect manifest "
+            f"{args.redirects_manifest}"
+        )
+
+    if args.push_to_gitlab:
+        # (local file, destination path in project, commit message)
+        to_push = []
+        source_name = os.path.basename(args.input_csv)
+        if not args.no_master_list:
+            to_push.append((
+                args.master_list,
+                args.gitlab_path or os.path.basename(args.master_list),
+                f"Update ARK master list ({appended} new from {source_name})",
+            ))
+        if not args.no_redirects_manifest:
+            to_push.append((
+                args.redirects_manifest,
+                args.gitlab_manifest_path or os.path.basename(args.redirects_manifest),
+                f"Update redirect manifest ({manifest_appended} new from {source_name})",
+            ))
+
+        token = os.environ.get(args.gitlab_token_env)
+        if not to_push:
+            print(
+                "Skipped GitLab push: both the master list and the redirect "
+                "manifest are disabled, so there is nothing to push.",
+                file=sys.stderr,
+            )
+        elif not args.gitlab_project:
+            print(
+                "Skipped GitLab push: --gitlab-project is required with "
+                "--push-to-gitlab.",
+                file=sys.stderr,
+            )
+        elif not token:
+            print(
+                f"Skipped GitLab push: environment variable "
+                f"{args.gitlab_token_env} is not set.",
+                file=sys.stderr,
+            )
+        else:
+            for local_path, dest_path, commit_message in to_push:
+                try:
+                    url = push_file_to_gitlab(
+                        local_path, args.gitlab_url, args.gitlab_project,
+                        dest_path, args.gitlab_branch, token, commit_message,
+                    )
+                    print(f"Pushed {local_path} to GitLab: {url}")
+                except RuntimeError as e:
+                    print(f"GitLab push of {local_path} failed: {e}", file=sys.stderr)
 
     ok = sum(1 for r in results if r["status"].startswith("OK"))
     errors = sum(1 for r in results if r["status"] == "ERROR")
