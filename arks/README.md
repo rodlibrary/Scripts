@@ -41,10 +41,19 @@ The template also has `dc_path`, `dc_article`, `preservica_ref` and `status` col
 3. Open Terminal in Documents and enter:
 
 ```powershell
-python generate_arks.py arks.csv --add-checksum --master-list "path\to\ark_master_list.csv"
+export GITLAB_TOKEN=glpat-your_token_here
+python3 generate_arks.py output --push-to-gitlab
 ```
 
-This writes `arks_manifest.csv` and `arks_manifest.anvl` to the current folder. To use a different name, add it after the input file, e.g. `python generate_arks.py arks.csv batch_2026_10`, which writes `batch_2026_10.csv` and `batch_2026_10.anvl`.
+-arks.csv is the input. It’s the default, so you don’t need to name it. To use a different file, put its path first: python3 generate_arks.py other.csv output --push-to-gitlab.
+
+-output is the base name for the per-run files. The script writes output.csv and output.anvl from it.
+
+--push-to-gitlab pushes ark_master_list.csv and redirects.csv to rod-library/redirects. Leave it off to run locally without pushing.
+--add-checksum appends the NOID check character to each ARK. It’s optional.
+--gitlab-branch master is needed only if your branch isn’t main.
+
+Pull the latest redirects.csv and ark_master_list.csv from GitLab into your folder before each run. The push overwrites the GitLab copies with your local files.
 
 | Option | Meaning | Default |
 |---|---|---|
