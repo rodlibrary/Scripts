@@ -23,14 +23,8 @@ Start from the [`arks.csv`](arks.csv) template. Column headers are case-insensit
 |---|---|---|---|
 | `identifier` | **Required** | Yes | Your local identifier. Kept in the output for traceability; it is **not** used to build the ARK. |
 | `title` | **Required** | Yes | Title or short description |
-| `naan` | Optional | No | Name Assigning Authority Number. Blank = the `--naan` value, or `32498` if that isn't given. |
 | `shoulder` | Optional | Yes | ARK shoulder / prefix, e.g. `s3` |
 | `url` | Optional | Yes | URL the ARK should resolve to |
-| `type` | Optional | No | Resource type, e.g. Text, Image, Dataset |
-| `commitment` | Optional | No | Persistence commitment statement |
-| `format` | Optional | No | File format, e.g. `application/pdf` |
-| `relation` | Optional | No | Related identifier or resource |
-| `source` | Optional | No | Source / provenance citation |
 
 The template also has `dc_path`, `dc_article`, `preservica_ref` and `status` columns, for Digital Commons paths, Digital Commons article numbers, Preservica references and redirect status. The current version of `generate_arks.py` doesn't read them: you can leave them filled in, but they won't appear in the output.
 
