@@ -3,6 +3,7 @@
 | File | What it does | Runs on |
 |---|---|---|
 | [`preservica_search_export.py`](preservica_search_export.py) | Exports select metadata from Preservica's via search API | Any computer with Python 3 and Preservica API access, or weekly on GitHub Actions |
+| [`preservica_metadata_api.py`](preservica_metadata_api.py) | Reads, downloads and updates one record's metadata through the Entity API; see [`API_GUIDE.md`](API_GUIDE.md) for using Preservica's Swagger pages | Any computer with Python 3 and Preservica API access |
 | [`downloadCount.py`](downloadCount.py) | Counts downloads of each asset from Preservica's audit logs and writes the count into the asset's metadata | Any computer with Python 3 and Preservica API access |
 
 ## preservica_search_export.py
