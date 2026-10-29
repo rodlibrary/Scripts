@@ -1,6 +1,6 @@
 # ARKs
 
-Generate Archival Resource Keys (ARKs) and matching metadata records from a CSV of source records.
+Generate Archival Resource Keys (ARKs) and matching metadata records from a CSV of source records and push to GitLab for resolving/redirecting.
 
 | File | What it does | Runs on |
 |---|---|---|
