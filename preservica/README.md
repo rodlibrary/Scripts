@@ -44,7 +44,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 python -m pip install pyPreservica requests
 ```
 
-**Credentials file.** Copy [`credentials.properties.example`](credentials.properties.example) to `credentials.properties` in the folder you run the scripts from, and fill in the username and password. The `[credentials]` line at the top is required:
+**Credentials file.** Copy [`credentials.properties.example`](credentials.properties.example) to `credentials.properties` in the same folder as the scripts, and fill in the username and password. `preservica_search_export.py`, `preservica_metadata_export.py`, `preservica_metadata_api.py` and `check_preservica_login.py` look for it in the folder your terminal is in and then next to the script; `downloadCount.py` and `preservica_download_collection_urls.py` only look in the folder your terminal is in, so `cd` there first. The `[credentials]` line at the top is required:
 
 ```
 [credentials]
@@ -56,7 +56,7 @@ tenant=UNIOWA
 
 `credentials.properties` is listed in the repository's `.gitignore`, so it won't be committed, but keep it private: it holds the password in plain text. Instead of the file, you can set the environment variables `PRESERVICA_USERNAME`, `PRESERVICA_PASSWORD`, `PRESERVICA_SERVER` and `PRESERVICA_TENANT`; they take priority over the file.
 
-**Login problems.** Run `python check_preservica_login.py` in the same folder. The usual causes:
+**Login problems.** Run `python check_preservica_login.py` in the same folder. It also catches a file saved as `credentials.properties.txt` (Windows hides the `.txt` that Notepad adds) and an empty `PRESERVICA_USERNAME` environment variable hiding the file's value. The usual server answers:
 
 | Server says | Meaning |
 |---|---|

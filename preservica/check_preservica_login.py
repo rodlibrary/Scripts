@@ -17,6 +17,10 @@ import sys
 import requests
 
 PATH = "credentials.properties"
+if not os.path.exists(PATH):   # not in the current folder: try next to this script
+    beside = os.path.join(os.path.dirname(os.path.abspath(__file__)), PATH)
+    if os.path.exists(beside):
+        PATH = beside
 KEYS = {"username": "PRESERVICA_USERNAME", "password": "PRESERVICA_PASSWORD",
         "server": "PRESERVICA_SERVER", "tenant": "PRESERVICA_TENANT",
         "twoFactorToken": "PRESERVICA_2FA_TOKEN"}
@@ -29,15 +33,20 @@ if not os.path.exists(PATH):
 
 cfg = configparser.RawConfigParser(interpolation=None)
 cfg.read(PATH, encoding="utf-8-sig")
-if "credentials" not in cfg:
+section = next((x for x in cfg.sections() if x.strip().lower() == "credentials"), None)
+if section is None:
     sys.exit(f"{PATH} has no [credentials] line at the top.")
+if section != "credentials":
+    print(f"Note: the first line is [{section}]. The scripts here accept that, but other tools need exactly [credentials].")
 
 values, problems = {}, []
 for key, env in KEYS.items():
     if os.environ.get(env) is not None:
+        if not os.environ[env].strip():
+            problems.append(f"environment variable {env} is set but empty: remove it (it hides the value in the file)")
         val, src = os.environ[env], f"environment variable {env} (overrides the file)"
     else:
-        val, src = cfg["credentials"].get(key), PATH
+        val, src = cfg[section].get(key), PATH
     values[key] = val
     if val is None:
         if key != "twoFactorToken":
@@ -47,7 +56,7 @@ for key, env in KEYS.items():
     print(f"{key:15} {shown:40} from {src}")
     if val != val.strip():
         problems.append(f"{key} has spaces at the start or end")
-    if val[:1] in "\"'" or val[-1:] in "\"'":
+    if val and (val[0] in "\"'" or val[-1] in "\"'"):
         problems.append(f"{key} is wrapped in quotes; remove them")
     if "REPLACE_WITH" in val:
         problems.append(f"{key} still has the placeholder text")
