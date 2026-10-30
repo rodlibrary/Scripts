@@ -2,7 +2,7 @@
   "info": {
     "name": "Preservica - download all metadata (export packages)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "# Downloading all metadata for every top-level folder\n\nPreservica builds an **export package** (OPEX) for each top-level folder on its own server: a ZIP file holding every asset and subfolder in it, each with its complete metadata (MODS, Dublin Core, identifiers, title, description, security tag). This collection exports **every top-level folder**, one after another, and then lets you download the ZIPs. The files themselves are left out (`NoContent`), so the packages hold only metadata. Any assets stored directly at the top level, outside a folder, are exported individually as well.\n\n**Before you start:** on this collection's **Variables** tab, fill in `username` and `password` in the **Current value** column, then click **Save**.\n\n## Part 1: export everything (automatic)\n\n1. Click the collection's **⋯** menu > **Run collection**.\n2. Keep requests 1 to 5 ticked and **untick 6. Download the next export**.\n3. Click **Run**.\n\nThe run logs in, reads the server version, lists the top-level folders, then for each one starts an export and checks every 15 seconds until it's finished before moving to the next. It stops by itself when all are done. The **Console** (bottom left) shows each folder as it goes, e.g. `Export 3 of 12 finished: University Archives`. Large folders take a while; you can leave it running. If the token nears its 15-minute limit, it logs in again by itself.\n\n## Part 2: download the ZIP files (one click per folder)\n\nPostman can't save files during a run, so this part is by hand:\n\n1. Open **6. Download the next export**.\n2. Click the arrow next to **Send** > **Send and Download**, and save the file. The Console says which folder it is, e.g. `Downloading 1 of 12: Special Collections`; name the file after it, ending in `.zip`.\n3. Repeat **Send and Download** for the next folder. Each send moves on to the next export, until the Console says all are downloaded.\n\nUnzip each file: every asset has an `.opex` file (XML) holding its metadata, arranged in the same folders as in Preservica.\n\n## Running it again\n\nRunning the collection again starts over with a fresh list of top-level folders. To download an earlier export again, set `downloadIndex` to its position (0 for the first) and send *6* again.\n\n## Options\n\nThe body of *4. Start the next export* has four settings:\n\n| Setting | Values |\n|---|---|\n| `IncludeContent` | `NoContent` (metadata only) or `Content` (also the files, which can be very large) |\n| `IncludeMetadata` | `Metadata`, `MetadataWithEvents` (adds the preservation history) or `NoMetadata` |\n| `IncludedGenerations` | `LatestActive`, `AllActive` or `All` (only matters with `Content`) |\n| `IncludeParentHierarchy` | `true` or `false` (whether to include the folders above) |\n\n## If something goes wrong\n\n- *2* finds nothing: the account needs **Read Metadata** on the records' security tags.\n- `403` on *4*: the account may not have permission to export. Ask your Preservica administrator.\n- An export shows `FAILED` or `ABORTED`: the run notes it and moves on to the next folder; *6* skips it. Export that folder again later with the single-folder steps in the read-metadata collection's guide, or rerun this collection.\n- The run stops part-way (Postman closed, network drop): rerun the collection. It starts over from the first folder.\n"
+    "description": "# Downloading all metadata for every top-level folder\n\nPreservica builds an **export package** (OPEX) for each top-level folder on its own server: a ZIP file holding every asset and subfolder in it, each with its complete metadata (MODS, Dublin Core, identifiers, title, description, security tag). This collection exports **every top-level folder**, one after another, and then lets you download the ZIPs. The files themselves are left out (`NoContent`), so the packages hold only metadata. Any assets stored directly at the top level, outside a folder, are exported individually as well.\n\n**Before you start:** on this collection's **Variables** tab, fill in `username` and `password` in the **Current value** column, then click **Save**.\n\n## Part 1: export everything (automatic)\n\n1. Click the collection's **⋯** menu > **Run collection**.\n2. Keep requests 1 to 5 ticked and **untick 6. Download the next export**.\n3. Click **Run**.\n\nThe run logs in, reads the server version, lists the top-level folders, then for each one starts an export and checks every 15 seconds until it's finished before moving to the next. It stops by itself when all are done. The **Console** (bottom left) shows each folder as it goes, e.g. `Export 3 of 12 finished: University Archives`. Large folders take a while; you can leave it running. If the token nears its 15-minute limit, it logs in again by itself.\n\n## Part 2: download the ZIP files (one click per folder)\n\nPostman can't save files during a run, so this part is by hand:\n\n1. Open **6. Download the next export**.\n2. Click the arrow next to **Send** > **Send and Download**, and save the file. The Console says which folder it is, e.g. `Downloading 1 of 12: Special Collections`; name the file after it, ending in `.zip`.\n3. Repeat **Send and Download** for the next folder. Each send moves on to the next export, until the Console says all are downloaded.\n\nUnzip each file: every asset has an `.opex` file (XML) holding its metadata, arranged in the same folders as in Preservica.\n\n## Running it again\n\nRunning the collection again starts over with a fresh list of top-level folders. To download an earlier export again, set `downloadIndex` to its position (0 for the first) and send *6* again.\n\n## Options\n\nThe body of *4. Start the next export* has four settings:\n\n| Setting | Values |\n|---|---|\n| `IncludeContent` | `NoContent` (metadata only) or `Content` (also the files, which can be very large) |\n| `IncludeMetadata` | `Metadata`, `MetadataWithEvents` (adds the preservation history) or `NoMetadata` |\n| `IncludedGenerations` | `LatestActive`, `AllActive` or `All` (only matters with `Content`) |\n| `IncludeParentHierarchy` | `true` (the default, includes the folders above) or `false` |\n\n## If something goes wrong\n\n- *2* finds nothing: the account needs **Read Metadata** on the records' security tags.\n- `403` on *4*: the account may not have permission to export. Ask your Preservica administrator.\n- `500` (*An unexpected error occurred*): the Console shows which request it was, what was sent, and the time. If it's *4* for every folder, the account probably lacks export permission or the server rejected the export; give your Preservica administrator or Preservica support the time and folder reference, since the cause is in their server logs. If it's only some folders, those folders may be too large or contain a record the export can't handle: the run notes them and carries on.\n- An export shows `FAILED` or `ABORTED`: the run notes it and moves on to the next folder; *6* skips it. Export that folder again later with the single-folder steps in the read-metadata collection's guide, or rerun this collection.\n- The run stops part-way (Postman closed, network drop): rerun the collection. It starts over from the first folder.\n"
   },
   "auth": {
     "type": "apikey",
@@ -58,6 +58,9 @@
       "script": {
         "type": "text/javascript",
         "exec": [
+          "if (pm.response.code >= 500) {",
+          "    console.log(`Preservica returned ${pm.response.code} for ${pm.request.method} ${pm.request.url.toString()} at ${new Date().toISOString()}. Response: ` + pm.response.text().slice(0, 300));",
+          "}",
           "if (pm.response.code === 401 && !pm.info.requestName.startsWith('1. Log in')) {",
           "    pm.collectionVariables.set('tokenTime', '0');",
           "    console.log('The token was rejected (401). The next request will log in again first.');",
@@ -276,6 +279,14 @@
               "    pm.request.method = 'GET';",
               "    return;",
               "}",
+              "if (!pm.collectionVariables.get('entityNs')) {   // request 3 didn't run: read the version now",
+              "    pm.sendRequest({ url: `https://${pm.collectionVariables.get('server')}/api/entity/versiondetails/version`,",
+              "                     header: { 'Preservica-Access-Token': pm.collectionVariables.get('token') } }, (err, res) => {",
+              "        const m = !err && res.text().match(/<CurrentVersion>(\\d+)\\.(\\d+)/);",
+              "        if (m) pm.collectionVariables.set('entityNs', `http://preservica.com/EntityAPI/v${m[1]}.${m[2]}`);",
+              "        else console.log('Could not read the Preservica version, so the export request has no namespace.');",
+              "    });",
+              "}",
               "const item = queue[i];",
               "const path = item.type === 'IO' ? 'information-objects' : 'structural-objects';",
               "pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/${path}/${item.ref}/exports`;",
@@ -299,6 +310,7 @@
               "    next('5. Wait for the export to finish');",
               "} else {",
               "    console.log(`Export of ${queue[i].title} not started (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300));",
+              "    console.log('Sent: POST ' + pm.request.url.toString() + '  body: ' + pm.request.body.raw.replace('{{entityNs}}', pm.collectionVariables.get('entityNs') || '(empty)').replace(/\\s+/g, ' '));",
               "    exportsList[i] = { title: queue[i].title, ref: queue[i].ref, id: '', status: 'NOT STARTED' };",
               "    pm.collectionVariables.set('exports', JSON.stringify(exportsList));",
               "    pm.collectionVariables.set('queueIndex', String(i + 1));",
@@ -319,7 +331,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "<ExportAction xmlns=\"{{entityNs}}\">\n  <IncludeContent>NoContent</IncludeContent>\n  <IncludeMetadata>Metadata</IncludeMetadata>\n  <IncludedGenerations>LatestActive</IncludedGenerations>\n  <IncludeParentHierarchy>false</IncludeParentHierarchy>\n</ExportAction>",
+          "raw": "<ExportAction xmlns=\"{{entityNs}}\">\n  <IncludeContent>NoContent</IncludeContent>\n  <IncludeMetadata>Metadata</IncludeMetadata>\n  <IncludedGenerations>LatestActive</IncludedGenerations>\n  <IncludeParentHierarchy>true</IncludeParentHierarchy>\n</ExportAction>",
           "options": {
             "raw": {
               "language": "xml"
@@ -384,7 +396,12 @@
       ],
       "request": {
         "method": "GET",
-        "header": [],
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "text/plain"
+          }
+        ],
         "url": "https://{{server}}/api/entity/progress/",
         "description": "Checks the current export (`GET /api/entity/progress/{id}`). While it's `ACTIVE`, the run waits `checkSeconds` (15 by default) and checks again; when it's done, the run moves on to the next folder, and stops after the last."
       }
@@ -432,7 +449,16 @@
       ],
       "request": {
         "method": "GET",
-        "header": [],
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/xml;charset=UTF-8"
+          },
+          {
+            "key": "X-STREAM-No-Retry",
+            "value": "true"
+          }
+        ],
         "url": "https://{{server}}/api/entity/actions/exports/content",
         "description": "**Use Send and Download** (the arrow next to Send). Each send downloads the next finished export as a ZIP; the Console says which folder it is so you can name the file. Not part of the automatic run."
       }
