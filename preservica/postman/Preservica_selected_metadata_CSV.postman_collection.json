@@ -254,7 +254,7 @@
               "if (folders.length) filters.push({ name: 'xip.parent_hierarchy', values: folders });",
               "['xip.top_level_so'].concat(fields).forEach(f => filters.push({ name: f, values: [] }));   // return these fields",
               "const body = [ { key: 'start', value: String(START) }, { key: 'max', value: String(MAX) },",
-              "               { key: 'q', value: JSON.stringify({ q: '%', fields: filters }) },",
+              "               { key: 'q', value: JSON.stringify({ q: '*', fields: filters }) },",
               "               { key: 'metadata', value: 'xip.reference' }, { key: 'metadata', value: 'xip.top_level_so' } ];",
               "fields.forEach(f => body.push({ key: 'metadata', value: f }));",
               "pm.request.body.update({ mode: 'urlencoded', urlencoded: body });"
@@ -308,7 +308,7 @@
               "if (folders.length) filters.push({ name: 'xip.parent_hierarchy', values: folders });",
               "['xip.top_level_so'].concat(fields).forEach(f => filters.push({ name: f, values: [] }));   // return these fields",
               "const body = [ { key: 'start', value: String(START) }, { key: 'max', value: String(MAX) },",
-              "               { key: 'q', value: JSON.stringify({ q: '%', fields: filters }) },",
+              "               { key: 'q', value: JSON.stringify({ q: '*', fields: filters }) },",
               "               { key: 'metadata', value: 'xip.reference' }, { key: 'metadata', value: 'xip.top_level_so' } ];",
               "fields.forEach(f => body.push({ key: 'metadata', value: f }));",
               "pm.request.body.update({ mode: 'urlencoded', urlencoded: body });"
