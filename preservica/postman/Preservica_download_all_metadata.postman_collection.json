@@ -1,0 +1,441 @@
+{
+  "info": {
+    "name": "Preservica - download all metadata (export packages)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "# Downloading all metadata for every top-level folder\n\nPreservica builds an **export package** (OPEX) for each top-level folder on its own server: a ZIP file holding every asset and subfolder in it, each with its complete metadata (MODS, Dublin Core, identifiers, title, description, security tag). This collection exports **every top-level folder**, one after another, and then lets you download the ZIPs. The files themselves are left out (`NoContent`), so the packages hold only metadata. Any assets stored directly at the top level, outside a folder, are exported individually as well.\n\n**Before you start:** on this collection's **Variables** tab, fill in `username` and `password` in the **Current value** column, then click **Save**.\n\n## Part 1: export everything (automatic)\n\n1. Click the collection's **⋯** menu > **Run collection**.\n2. Keep requests 1 to 5 ticked and **untick 6. Download the next export**.\n3. Click **Run**.\n\nThe run logs in, reads the server version, lists the top-level folders, then for each one starts an export and checks every 15 seconds until it's finished before moving to the next. It stops by itself when all are done. The **Console** (bottom left) shows each folder as it goes, e.g. `Export 3 of 12 finished: University Archives`. Large folders take a while; you can leave it running. If the token nears its 15-minute limit, it logs in again by itself.\n\n## Part 2: download the ZIP files (one click per folder)\n\nPostman can't save files during a run, so this part is by hand:\n\n1. Open **6. Download the next export**.\n2. Click the arrow next to **Send** > **Send and Download**, and save the file. The Console says which folder it is, e.g. `Downloading 1 of 12: Special Collections`; name the file after it, ending in `.zip`.\n3. Repeat **Send and Download** for the next folder. Each send moves on to the next export, until the Console says all are downloaded.\n\nUnzip each file: every asset has an `.opex` file (XML) holding its metadata, arranged in the same folders as in Preservica.\n\n## Running it again\n\nRunning the collection again starts over with a fresh list of top-level folders. To download an earlier export again, set `downloadIndex` to its position (0 for the first) and send *6* again.\n\n## Options\n\nThe body of *4. Start the next export* has four settings:\n\n| Setting | Values |\n|---|---|\n| `IncludeContent` | `NoContent` (metadata only) or `Content` (also the files, which can be very large) |\n| `IncludeMetadata` | `Metadata`, `MetadataWithEvents` (adds the preservation history) or `NoMetadata` |\n| `IncludedGenerations` | `LatestActive`, `AllActive` or `All` (only matters with `Content`) |\n| `IncludeParentHierarchy` | `true` or `false` (whether to include the folders above) |\n\n## If something goes wrong\n\n- *2* finds nothing: the account needs **Read Metadata** on the records' security tags.\n- `403` on *4*: the account may not have permission to export. Ask your Preservica administrator.\n- An export shows `FAILED` or `ABORTED`: the run notes it and moves on to the next folder; *6* skips it. Export that folder again later with the single-folder steps in the read-metadata collection's guide, or rerun this collection.\n- The run stops part-way (Postman closed, network drop): rerun the collection. It starts over from the first folder.\n"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "Preservica-Access-Token",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{token}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Logs in again automatically when the token is missing or over 12 minutes old.",
+          "if (pm.info.requestName.startsWith('1. Log in')) return;",
+          "const age = Date.now() - Number(pm.collectionVariables.get('tokenTime') || 0);",
+          "if (pm.collectionVariables.get('token') && age < 12 * 60 * 1000) return;",
+          "pm.sendRequest({",
+          "    url: `https://${pm.collectionVariables.get('server')}/api/accesstoken/login`,",
+          "    method: 'POST',",
+          "    body: { mode: 'urlencoded', urlencoded: [",
+          "        { key: 'username', value: pm.collectionVariables.get('username') },",
+          "        { key: 'password', value: pm.collectionVariables.get('password') },",
+          "        { key: 'tenant', value: pm.collectionVariables.get('tenant') } ] }",
+          "}, (err, res) => {",
+          "    if (!err && res.code === 200) {",
+          "        pm.collectionVariables.set('token', res.json().token);",
+          "        pm.collectionVariables.set('tokenTime', String(Date.now()));",
+          "        console.log('Logged in again (token refreshed).');",
+          "    } else {",
+          "        console.log('Automatic login failed: ' + (err || res.text()));",
+          "    }",
+          "});"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.response.code === 401 && !pm.info.requestName.startsWith('1. Log in')) {",
+          "    pm.collectionVariables.set('tokenTime', '0');",
+          "    console.log('The token was rejected (401). The next request will log in again first.');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "server",
+      "value": "us.preservica.com"
+    },
+    {
+      "key": "tenant",
+      "value": "UNIOWA"
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "tokenTime",
+      "value": "0"
+    },
+    {
+      "key": "entityNs",
+      "value": ""
+    },
+    {
+      "key": "topNextUrl",
+      "value": ""
+    },
+    {
+      "key": "top",
+      "value": "[]"
+    },
+    {
+      "key": "queue",
+      "value": "[]"
+    },
+    {
+      "key": "queueIndex",
+      "value": "0"
+    },
+    {
+      "key": "exports",
+      "value": "[]"
+    },
+    {
+      "key": "downloadIndex",
+      "value": "0"
+    },
+    {
+      "key": "checkSeconds",
+      "value": "15"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Log in",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    pm.collectionVariables.set('token', pm.response.json().token);",
+              "    pm.collectionVariables.set('tokenTime', String(Date.now()));",
+              "    pm.collectionVariables.set('topNextUrl', '');   // a new run always lists folders from the start",
+              "    console.log('Logged in. Later requests log in again by themselves when the token nears its 15-minute limit.');",
+              "} else {",
+              "    console.log('Login failed: ' + pm.response.text());",
+              "}",
+              "pm.test('Logged in', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "username",
+              "value": "{{username}}",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{password}}",
+              "type": "text"
+            },
+            {
+              "key": "tenant",
+              "value": "{{tenant}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": "https://{{server}}/api/accesstoken/login",
+        "description": "`POST /api/accesstoken/login`. Checks the username, password and tenant, and saves the token. Every later request sends it in the `Preservica-Access-Token` header and logs in again by itself when it's about to expire."
+      }
+    },
+    {
+      "name": "2. List top-level folders",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// First page, or the next page when the list is longer than 100.",
+              "const nextUrl = pm.collectionVariables.get('topNextUrl');",
+              "pm.request.url = nextUrl || `https://${pm.collectionVariables.get('server')}/api/entity/root/children?start=0&max=100`;"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const unescape = s => s.replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');",
+              "if (pm.response.code !== 200) { console.log(`Listing failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300)); next(null); return; }",
+              "const firstPage = !pm.collectionVariables.get('topNextUrl');",
+              "const top = firstPage ? [] : JSON.parse(pm.collectionVariables.get('top') || '[]');",
+              "for (const m of pm.response.text().matchAll(/<Child\\b([^>]*)>/g)) {",
+              "    const a = {}; for (const x of m[1].matchAll(/(\\w+)=\"([^\"]*)\"/g)) a[x[1]] = unescape(x[2]);",
+              "    top.push({ type: a.type, ref: a.ref, title: a.title });",
+              "}",
+              "pm.collectionVariables.set('top', JSON.stringify(top));",
+              "const more = pm.response.text().match(/<(?:\\w+:)?Next>([^<]+)</);",
+              "if (more) {",
+              "    pm.collectionVariables.set('topNextUrl', unescape(more[1].trim()));",
+              "    console.log(`Listed ${top.length} so far; fetching the next page.`);",
+              "    next(pm.info.requestName);",
+              "    return;",
+              "}",
+              "pm.collectionVariables.set('topNextUrl', '');",
+              "// Fresh list: every top-level folder and top-level asset becomes one export.",
+              "pm.collectionVariables.set('queue', JSON.stringify(top.filter(t => t.type === 'SO' || t.type === 'IO')));",
+              "pm.collectionVariables.set('exports', '[]');",
+              "pm.collectionVariables.set('queueIndex', '0');",
+              "pm.collectionVariables.set('downloadIndex', '0');",
+              "const folders = top.filter(t => t.type === 'SO'), assets = top.filter(t => t.type === 'IO');",
+              "folders.forEach(f => console.log(`Folder: ${f.title}  (${f.ref})`));",
+              "if (assets.length) console.log(`Plus ${assets.length} asset(s) stored directly at the top level, not in a folder.`);",
+              "console.log(top.length ? `${folders.length} top-level folder(s).` : 'Nothing is visible to this account: it needs Read Metadata on the records\\' security tags.');",
+              "pm.test('Top-level folders found', () => pm.expect(top.length).to.be.above(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/root/children?start=0&max=100",
+        "description": "Lists every top-level folder (and any assets stored at the top level), following page links if there are more than 100. The Console shows each folder's title and reference."
+      }
+    },
+    {
+      "name": "3. Get the server version",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const m = pm.response.text().match(/<CurrentVersion>(\\d+)\\.(\\d+)/);",
+              "if (m) {",
+              "    pm.collectionVariables.set('entityNs', `http://preservica.com/EntityAPI/v${m[1]}.${m[2]}`);",
+              "    console.log(`Preservica ${m[1]}.${m[2]}. Starting the exports.`);",
+              "} else {",
+              "    console.log('Could not read the version: ' + pm.response.text().slice(0, 300));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/versiondetails/version",
+        "description": "Reads the Preservica version and saves the matching XML namespace (`entityNs`) that the export request needs."
+      }
+    },
+    {
+      "name": "4. Start the next export",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const queue = JSON.parse(pm.collectionVariables.get('queue') || '[]');",
+              "const i = Number(pm.collectionVariables.get('queueIndex') || 0);",
+              "if (i >= queue.length) {",
+              "    console.log(queue.length ? 'All exports have been started already. Run the collection again to start over.' : 'Run 2. List top-level folders first.');",
+              "    pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/versiondetails/version`;",
+              "    pm.request.method = 'GET';",
+              "    return;",
+              "}",
+              "const item = queue[i];",
+              "const path = item.type === 'IO' ? 'information-objects' : 'structural-objects';",
+              "pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/${path}/${item.ref}/exports`;",
+              "console.log(`Starting export ${i + 1} of ${queue.length}: ${item.title}`);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const queue = JSON.parse(pm.collectionVariables.get('queue') || '[]');",
+              "const i = Number(pm.collectionVariables.get('queueIndex') || 0);",
+              "if (i >= queue.length) { next(null); return; }",
+              "const exportsList = JSON.parse(pm.collectionVariables.get('exports') || '[]');",
+              "if (pm.response.code === 202) {",
+              "    exportsList[i] = { title: queue[i].title, ref: queue[i].ref, id: pm.response.text().trim(), status: 'ACTIVE' };",
+              "    pm.collectionVariables.set('exports', JSON.stringify(exportsList));",
+              "    next('5. Wait for the export to finish');",
+              "} else {",
+              "    console.log(`Export of ${queue[i].title} not started (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300));",
+              "    exportsList[i] = { title: queue[i].title, ref: queue[i].ref, id: '', status: 'NOT STARTED' };",
+              "    pm.collectionVariables.set('exports', JSON.stringify(exportsList));",
+              "    pm.collectionVariables.set('queueIndex', String(i + 1));",
+              "    next(i + 1 < queue.length ? pm.info.requestName : null);",
+              "}",
+              "pm.test('Export started', () => pm.response.to.have.status(202));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/xml;charset=UTF-8"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "<ExportAction xmlns=\"{{entityNs}}\">\n  <IncludeContent>NoContent</IncludeContent>\n  <IncludeMetadata>Metadata</IncludeMetadata>\n  <IncludedGenerations>LatestActive</IncludedGenerations>\n  <IncludeParentHierarchy>false</IncludeParentHierarchy>\n</ExportAction>",
+          "options": {
+            "raw": {
+              "language": "xml"
+            }
+          }
+        },
+        "url": "https://{{server}}/api/entity/structural-objects/exports",
+        "description": "Starts the export of the next top-level folder in the list (`POST /api/entity/structural-objects/{ref}/exports`, or `information-objects` for a top-level asset). The address is filled in automatically. Edit the body to change what the packages include."
+      }
+    },
+    {
+      "name": "5. Wait for the export to finish",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const exportsList = JSON.parse(pm.collectionVariables.get('exports') || '[]');",
+              "const i = Number(pm.collectionVariables.get('queueIndex') || 0);",
+              "const id = exportsList[i] ? exportsList[i].id : '';",
+              "pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/progress/${id}`;"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const queue = JSON.parse(pm.collectionVariables.get('queue') || '[]');",
+              "const exportsList = JSON.parse(pm.collectionVariables.get('exports') || '[]');",
+              "const i = Number(pm.collectionVariables.get('queueIndex') || 0);",
+              "if (!exportsList[i]) { console.log('No export in progress. Run the collection from the start.'); next(null); return; }",
+              "const m = pm.response.text().match(/<(?:\\w+:)?Status>([^<]+)</);",
+              "const status = m ? m[1] : `UNKNOWN (HTTP ${pm.response.code})`;",
+              "const label = `Export ${i + 1} of ${queue.length}`;",
+              "if (status === 'ACTIVE' || status === 'PENDING') {",
+              "    const secs = Number(pm.collectionVariables.get('checkSeconds') || 15);",
+              "    console.log(`${label} still working: ${exportsList[i].title}. Checking again in ${secs} seconds.`);",
+              "    next(pm.info.requestName);",
+              "    setTimeout(() => {}, secs * 1000);   // wait before the next check",
+              "    return;",
+              "}",
+              "exportsList[i].status = status;",
+              "pm.collectionVariables.set('exports', JSON.stringify(exportsList));",
+              "pm.collectionVariables.set('queueIndex', String(i + 1));",
+              "console.log(status === 'COMPLETED' ? `${label} finished: ${exportsList[i].title}` : `${label} ${status}: ${exportsList[i].title}. Moving on.`);",
+              "if (i + 1 < queue.length) {",
+              "    next('4. Start the next export');",
+              "} else {",
+              "    const done = exportsList.filter(e => e.status === 'COMPLETED').length;",
+              "    const notDone = exportsList.filter(e => e.status !== 'COMPLETED');",
+              "    console.log(`All exports finished: ${done} of ${queue.length} ready to download.` + (notDone.length ? ' Not exported: ' + notDone.map(e => `${e.title} (${e.status})`).join(', ') + '.' : ''));",
+              "    console.log('Now open 6. Download the next export and use Send and Download once per folder.');",
+              "    next(null);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/progress/",
+        "description": "Checks the current export (`GET /api/entity/progress/{id}`). While it's `ACTIVE`, the run waits `checkSeconds` (15 by default) and checks again; when it's done, the run moves on to the next folder, and stops after the last."
+      }
+    },
+    {
+      "name": "6. Download the next export",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const exportsList = JSON.parse(pm.collectionVariables.get('exports') || '[]');",
+              "let d = Number(pm.collectionVariables.get('downloadIndex') || 0);",
+              "while (d < exportsList.length && (!exportsList[d] || exportsList[d].status !== 'COMPLETED')) d++;   // skip failed ones",
+              "pm.collectionVariables.set('downloadIndex', String(d));",
+              "const ready = exportsList.filter(e => e && e.status === 'COMPLETED');",
+              "if (d >= exportsList.length) {",
+              "    console.log(ready.length ? `All ${ready.length} exports have been downloaded. To download one again, set downloadIndex (0 = first) and send again.` : 'No finished exports yet. Run the collection first (requests 1 to 5).');",
+              "    pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/versiondetails/version`;",
+              "    return;",
+              "}",
+              "const n = exportsList.slice(0, d + 1).filter(e => e && e.status === 'COMPLETED').length;",
+              "console.log(`Downloading ${n} of ${ready.length}: ${exportsList[d].title}. Save it as \"${exportsList[d].title}.zip\".`);",
+              "pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/actions/exports/${exportsList[d].id}/content`;"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const exportsList = JSON.parse(pm.collectionVariables.get('exports') || '[]');",
+              "const d = Number(pm.collectionVariables.get('downloadIndex') || 0);",
+              "if (d < exportsList.length && pm.response.code === 200 && pm.request.url.toString().includes('/content')) {",
+              "    pm.collectionVariables.set('downloadIndex', String(d + 1));",
+              "    console.log('Downloaded. Send and Download again for the next folder.');",
+              "} else if (d < exportsList.length) {",
+              "    console.log(`Download failed (HTTP ${pm.response.code}). Send and Download again to retry this folder.`);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/actions/exports/content",
+        "description": "**Use Send and Download** (the arrow next to Send). Each send downloads the next finished export as a ZIP; the Console says which folder it is so you can name the file. Not part of the automatic run."
+      }
+    }
+  ]
+}

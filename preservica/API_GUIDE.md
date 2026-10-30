@@ -12,7 +12,7 @@ The `demo.preservica.com` pages describe Preservica's demonstration system. Your
 | `https://us.preservica.com/api/entity/documentation.html` | Assets, folders and their metadata: read, add, update, delete |
 | `https://us.preservica.com/api/content/documentation.html` | Search (what `preservica_search_export.py` uses) |
 
-Every request needs the tenant `UNIOWA` at login, and only shows records the account has **Read Metadata** permission for (see [Next steps](#5-next-steps)).
+Every request needs the tenant `UNIOWA` at login, and only shows records the account has **Read Metadata** permission for (see [Permissions](#5-permissions)).
 
 ## 2. Log in and get a token
 
@@ -85,9 +85,16 @@ Add `--folder` when the reference is a folder. `update` without `--apply` only p
 
 For exporting many records at once, `preservica_search_export.py` is much faster. Use this script for individual records, or to download full XML that the search index doesn't hold.
 
-## 5. Next steps
+## 5. Permissions
 
-1. **Give the service account Read Metadata.** The last scheduled export ran but the account could see 0 records; Read Content alone doesn't make records visible. An administrator ticks **Read Metadata** for the account's role on each security tag the records use (`sdb/security.html`). Updating metadata needs the edit permission on the tag as well.
-2. **Confirm by logging in as the service account** in a browser, or with `python preservica_metadata_api.py version` followed by `list` on a record you know.
-3. **Rerun the export** from **Actions > Preservica metadata export > Run workflow**. The run summary shows the record count, or the reason none were found.
-4. **Practise an update on one test record** with `update` (dry run), then `--apply`, and check the result in Preservica before using it on real records.
+The account you log in with sees and changes only what its roles allow, for each security tag:
+
+1. **Read Metadata** on the tags of the records you want. Without it, records don't appear at all: searches return 0 and folder lists come back empty. *Read Content* alone isn't enough. An administrator sets this per tag in Preservica's `sdb/security.html` page.
+2. **Permission to edit metadata** on those tags, for `PUT`, `POST` and `DELETE`.
+3. **Permission to export**, for the export packages (`POST …/exports`).
+
+To check an account, log in to Preservica in a browser as that account and search, or run `python preservica_metadata_api.py version` followed by `list` on a record you know. Practise an update on one test record (`update` as a dry run, then `--apply`) and check the result in Preservica before using it on real records.
+
+## 6. The same requests in Postman
+
+[`postman/`](postman/) has ready-made Postman collections built on these requests: reading one record, downloading all metadata as export packages, and selected fields for all assets as a CSV. Each logs in by itself and has step-by-step instructions in its Overview panel. See [`postman/README.md`](postman/README.md).

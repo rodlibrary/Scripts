@@ -1,0 +1,240 @@
+{
+  "info": {
+    "name": "Preservica - read metadata",
+    "description": "# Reading Preservica metadata\n\nRead-only requests for the UNI Preservica server (`us.preservica.com`, tenant `UNIOWA`). Nothing here changes records.\n\n**Before you start:** on this collection's **Variables** tab, fill in `username` and `password` in the **Current value** column (current values stay on your computer; initial values sync to Postman's servers), then click **Save**.\n\n## Steps\n\n1. **Log in and get a token.** Run *1. Log in* and check for `200 OK`. The token is saved to the `token` variable, and every other request sends it in the `Preservica-Access-Token` header. Tokens last 15 minutes; requests log in again by themselves when the token is about to expire or is rejected.\n2. **Check the token works.** Run *2. Check the token works*. A response containing `<CurrentVersion>` means the token is being sent correctly.\n3. **Find a folder.** Run *3. List top-level folders*. Each `<Child>` shows a title, a `ref`, and `type=\"SO\"` for a folder. Copy a folder's `ref` into the `folderRef` variable and save. An empty list means this account can't see any records yet: it needs **Read Metadata** on their security tags.\n4. **Find an asset in it.** Run *4. List a folder's contents*. Assets have `type=\"IO\"`. Copy one asset's `ref` into `assetRef` and save. Shortcut: open a record in Preservica and paste the code after `IO_` in the browser's address bar.\n5. **Read the asset.** Run *6. Read an asset*. The response gives the title, description, security tag and parent folder. Each `<Fragment schema=\"...\">` near the bottom is one metadata record (MODS, Dublin Core...), and its text is the URL to fetch it from. The request saves the first of those URLs into `fragmentUrl`.\n6. **Read the metadata record.** Run *7. Download a metadata fragment*. The metadata itself, such as `<mods>`, is inside `<Content>`. For a different schema, paste that fragment's URL from step 5 into `fragmentUrl` and run it again. To keep a copy, use **Save Response > Save to a file**.\n\n## If something goes wrong\n\n- `401` on login: `incorrect.tenant` means the tenant or a username that doesn't exist in it; `Bad credentials` means the password.\n- `401` on any other request: the token was rejected. Send the request again; it logs in first.\n- `404`: check the reference in `folderRef` or `assetRef`, and that an asset's reference isn't being used as a folder's (or the reverse).\n- Empty lists: the account lacks Read Metadata on the records' security tags.\n\nThe *Console* (bottom left in Postman) shows messages from the log-in and read-asset requests, including every fragment's schema and URL.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "Preservica-Access-Token",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{token}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "server",
+      "value": "us.preservica.com"
+    },
+    {
+      "key": "tenant",
+      "value": "UNIOWA"
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "tokenTime",
+      "value": "0"
+    },
+    {
+      "key": "folderRef",
+      "value": ""
+    },
+    {
+      "key": "assetRef",
+      "value": ""
+    },
+    {
+      "key": "fragmentUrl",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Log in (saves the token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    pm.collectionVariables.set('token', pm.response.json().token);",
+              "    pm.collectionVariables.set('tokenTime', String(Date.now()));",
+              "    console.log('Token saved. It is valid for 15 minutes.');",
+              "} else {",
+              "    console.log('Login failed: ' + pm.response.text());",
+              "}",
+              "pm.test('Logged in', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "username",
+              "value": "{{username}}",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{password}}",
+              "type": "text"
+            },
+            {
+              "key": "tenant",
+              "value": "{{tenant}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": "https://{{server}}/api/accesstoken/login",
+        "description": "**Step 1.** `POST /api/accesstoken/login` with `username`, `password` and `tenant` as form fields. On `200 OK` the token is saved to the `token` variable. Valid for 15 minutes."
+      }
+    },
+    {
+      "name": "2. Check the token works (server version)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/versiondetails/version",
+        "description": "**Step 2.** A response containing `<CurrentVersion>` means the token is being sent. A `401` means log in again."
+      }
+    },
+    {
+      "name": "3. List top-level folders",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/root/children?start=0&max=100",
+        "description": "**Step 3.** Each `<Child>` has `type=\"SO\"` (folder) or `\"IO\"` (asset), a `title` and a `ref`. Copy a folder's `ref` into the `folderRef` variable and save. An empty list means this account can't see any records yet (it needs Read Metadata on their security tags)."
+      }
+    },
+    {
+      "name": "4. List a folder's contents",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/structural-objects/{{folderRef}}/children?start=0&max=100",
+        "description": "**Step 4.** Assets have `type=\"IO\"`. Copy one's `ref` into the `assetRef` variable and save. For more than 100 items, raise `start` by 100, or follow the `<Next>` link."
+      }
+    },
+    {
+      "name": "5. Read a folder",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/structural-objects/{{folderRef}}",
+        "description": "Optional. The folder's title, description, security tag, parent, and any metadata records attached to the folder itself."
+      }
+    },
+    {
+      "name": "6. Read an asset (lists its metadata)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const frags = [...pm.response.text().matchAll(/<Fragment schema=\"([^\"]+)\">([^<]+)<\\/Fragment>/g)];",
+              "frags.forEach(f => console.log(f[1] + '  ->  ' + f[2]));",
+              "if (frags.length) {",
+              "    pm.collectionVariables.set('fragmentUrl', frags[0][2].trim());",
+              "    console.log('Saved the first fragment URL to fragmentUrl (' + frags[0][1] + ').');",
+              "} else {",
+              "    console.log('No metadata fragments listed for this asset.');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/information-objects/{{assetRef}}",
+        "description": "**Step 5.** Returns the asset's title, description, security tag and parent, plus one `<Fragment schema=\"...\">URL</Fragment>` per metadata record. The first fragment URL is saved to `fragmentUrl` for the next request; the Console lists them all."
+      }
+    },
+    {
+      "name": "7. Download a metadata fragment",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{fragmentUrl}}",
+        "description": "**Step 6.** The metadata record itself (e.g. `<mods>`) is inside `<Content>`. For another schema, paste its URL from *6. Read an asset* into `fragmentUrl`. Use **Save Response > Save to a file** to keep it."
+      }
+    },
+    {
+      "name": "8. Asset identifiers",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/information-objects/{{assetRef}}/identifiers",
+        "description": "Optional. The asset's external identifiers (type and value)."
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Logs in again automatically when the token is missing or over 12 minutes old.",
+          "if (pm.info.requestName.startsWith('1. Log in')) return;",
+          "const age = Date.now() - Number(pm.collectionVariables.get('tokenTime') || 0);",
+          "if (pm.collectionVariables.get('token') && age < 12 * 60 * 1000) return;",
+          "pm.sendRequest({",
+          "    url: `https://${pm.collectionVariables.get('server')}/api/accesstoken/login`,",
+          "    method: 'POST',",
+          "    body: { mode: 'urlencoded', urlencoded: [",
+          "        { key: 'username', value: pm.collectionVariables.get('username') },",
+          "        { key: 'password', value: pm.collectionVariables.get('password') },",
+          "        { key: 'tenant', value: pm.collectionVariables.get('tenant') } ] }",
+          "}, (err, res) => {",
+          "    if (!err && res.code === 200) {",
+          "        pm.collectionVariables.set('token', res.json().token);",
+          "        pm.collectionVariables.set('tokenTime', String(Date.now()));",
+          "        console.log('Logged in again (token refreshed).');",
+          "    } else {",
+          "        console.log('Automatic login failed: ' + (err || res.text()));",
+          "    }",
+          "});"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.response.code === 401 && !pm.info.requestName.startsWith('1. Log in')) {",
+          "    pm.collectionVariables.set('tokenTime', '0');",
+          "    console.log('The token was rejected (401). The next request will log in again first.');",
+          "}"
+        ]
+      }
+    }
+  ]
+}
