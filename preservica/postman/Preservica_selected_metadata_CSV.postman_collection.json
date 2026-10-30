@@ -1,0 +1,399 @@
+{
+  "info": {
+    "name": "Preservica - selected metadata for all assets (CSV)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "# Selected metadata for all assets in every top-level folder, as a CSV\n\nUses Preservica's search (the Content API, the same one the scheduled GitHub export uses) to pull the fields you choose for **every asset in every top-level folder**, a page at a time, then builds a CSV. The second column, `top_level_folder`, names the top-level folder each asset is in, so you can sort or filter by it in Excel.\n\n**Before you start:** on this collection's **Variables** tab:\n- fill in `username` and `password` in the **Current value** column;\n- set `fields` to the fields you want, separated by commas (any names from `indexed_fields.csv` in the Scripts repository, e.g. `mods.title,mods.dateCreated,xip.security_descriptor`);\n- leave `folderRefs` blank to cover all top-level folders. To cover only some, list their references separated by commas (request 2 shows them in the Console);\n- click **Save**.\n\n## Steps\n\n1. Click the collection's **⋯** menu > **Run collection**, keep all five requests ticked, and click **Run**.\n2. The run logs in, lists the top-level folders, counts the matching assets, and collects them 100 at a time. The **Console** shows progress, e.g. `Collected 300 of 1250`. It logs in again by itself if the token nears its 15-minute limit.\n3. When the run finishes, open *5. Show the results as a CSV* and click the **Visualize** tab of its response. It shows the first 200 rows as a table, a **Download CSV** button, and the full CSV in a box. If the button doesn't download anything, click in the box, select all, copy, and paste into a new file saved with a `.csv` ending.\n\nThe CSV opens in Excel. Fields with several values (such as subjects) are joined with ` | `. Assets stored at the top level, outside any folder, have `top_level_folder` blank.\n\n## Notes\n\n- Only **indexed** fields can be returned; `indexed_fields.csv` lists them. To get every field of every record as XML, use the *download all metadata (export packages)* collection instead.\n- Running the collection again clears the previous results and starts over.\n- For tens of thousands of assets Postman can become slow; the GitHub export (`preservica_search_export.py`) handles that size better.\n- 0 assets: check `folderRefs`, and that the account has **Read Metadata** on the records' security tags.\n"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "Preservica-Access-Token",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{token}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Logs in again automatically when the token is missing or over 12 minutes old.",
+          "if (pm.info.requestName.startsWith('1. Log in')) return;",
+          "const age = Date.now() - Number(pm.collectionVariables.get('tokenTime') || 0);",
+          "if (pm.collectionVariables.get('token') && age < 12 * 60 * 1000) return;",
+          "pm.sendRequest({",
+          "    url: `https://${pm.collectionVariables.get('server')}/api/accesstoken/login`,",
+          "    method: 'POST',",
+          "    body: { mode: 'urlencoded', urlencoded: [",
+          "        { key: 'username', value: pm.collectionVariables.get('username') },",
+          "        { key: 'password', value: pm.collectionVariables.get('password') },",
+          "        { key: 'tenant', value: pm.collectionVariables.get('tenant') } ] }",
+          "}, (err, res) => {",
+          "    if (!err && res.code === 200) {",
+          "        pm.collectionVariables.set('token', res.json().token);",
+          "        pm.collectionVariables.set('tokenTime', String(Date.now()));",
+          "        console.log('Logged in again (token refreshed).');",
+          "    } else {",
+          "        console.log('Automatic login failed: ' + (err || res.text()));",
+          "    }",
+          "});"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.response.code === 401 && !pm.info.requestName.startsWith('1. Log in')) {",
+          "    pm.collectionVariables.set('tokenTime', '0');",
+          "    console.log('The token was rejected (401). The next request will log in again first.');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "server",
+      "value": "us.preservica.com"
+    },
+    {
+      "key": "tenant",
+      "value": "UNIOWA"
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "tokenTime",
+      "value": "0"
+    },
+    {
+      "key": "fields",
+      "value": "xip.title,xip.description,mods.title,mods.namePart,mods.dateCreated,mods.subjectTopical,mods.identifier,mods.rightsStatement,xip.parent_ref,xip.security_descriptor"
+    },
+    {
+      "key": "folderRefs",
+      "value": ""
+    },
+    {
+      "key": "pageSize",
+      "value": "100"
+    },
+    {
+      "key": "topNextUrl",
+      "value": ""
+    },
+    {
+      "key": "top",
+      "value": "[]"
+    },
+    {
+      "key": "folderNames",
+      "value": "{}"
+    },
+    {
+      "key": "start",
+      "value": "0"
+    },
+    {
+      "key": "total",
+      "value": "0"
+    },
+    {
+      "key": "rows",
+      "value": "[]"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Log in",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    pm.collectionVariables.set('token', pm.response.json().token);",
+              "    pm.collectionVariables.set('tokenTime', String(Date.now()));",
+              "    pm.collectionVariables.set('topNextUrl', '');   // a new run always lists folders from the start",
+              "    console.log('Logged in. Later requests log in again by themselves when the token nears its 15-minute limit.');",
+              "} else {",
+              "    console.log('Login failed: ' + pm.response.text());",
+              "}",
+              "pm.test('Logged in', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "username",
+              "value": "{{username}}",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{password}}",
+              "type": "text"
+            },
+            {
+              "key": "tenant",
+              "value": "{{tenant}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": "https://{{server}}/api/accesstoken/login",
+        "description": "`POST /api/accesstoken/login`. Checks the username, password and tenant, and saves the token. Every later request sends it in the `Preservica-Access-Token` header and logs in again by itself when it's about to expire."
+      }
+    },
+    {
+      "name": "2. List top-level folders",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// First page, or the next page when the list is longer than 100.",
+              "const nextUrl = pm.collectionVariables.get('topNextUrl');",
+              "pm.request.url = nextUrl || `https://${pm.collectionVariables.get('server')}/api/entity/root/children?start=0&max=100`;"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const unescape = s => s.replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');",
+              "if (pm.response.code !== 200) { console.log(`Listing failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300)); next(null); return; }",
+              "const firstPage = !pm.collectionVariables.get('topNextUrl');",
+              "const top = firstPage ? [] : JSON.parse(pm.collectionVariables.get('top') || '[]');",
+              "for (const m of pm.response.text().matchAll(/<Child\\b([^>]*)>/g)) {",
+              "    const a = {}; for (const x of m[1].matchAll(/(\\w+)=\"([^\"]*)\"/g)) a[x[1]] = unescape(x[2]);",
+              "    top.push({ type: a.type, ref: a.ref, title: a.title });",
+              "}",
+              "pm.collectionVariables.set('top', JSON.stringify(top));",
+              "const more = pm.response.text().match(/<(?:\\w+:)?Next>([^<]+)</);",
+              "if (more) {",
+              "    pm.collectionVariables.set('topNextUrl', unescape(more[1].trim()));",
+              "    console.log(`Listed ${top.length} so far; fetching the next page.`);",
+              "    next(pm.info.requestName);",
+              "    return;",
+              "}",
+              "pm.collectionVariables.set('topNextUrl', '');",
+              "// Fresh start: remember folder names for the CSV, and clear earlier results.",
+              "const names = {}; top.filter(t => t.type === 'SO').forEach(t => names[t.ref] = t.title);",
+              "pm.collectionVariables.set('folderNames', JSON.stringify(names));",
+              "pm.collectionVariables.set('start', '0');",
+              "pm.collectionVariables.set('rows', '[]');",
+              "const folders = top.filter(t => t.type === 'SO'), assets = top.filter(t => t.type === 'IO');",
+              "folders.forEach(f => console.log(`Folder: ${f.title}  (${f.ref})`));",
+              "if (assets.length) console.log(`Plus ${assets.length} asset(s) stored directly at the top level, not in a folder.`);",
+              "console.log(top.length ? `${folders.length} top-level folder(s).` : 'Nothing is visible to this account: it needs Read Metadata on the records\\' security tags.');",
+              "pm.test('Top-level folders found', () => pm.expect(top.length).to.be.above(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/root/children?start=0&max=100",
+        "description": "Lists every top-level folder (and any assets stored at the top level), following page links if there are more than 100. The Console shows each folder's title and reference."
+      }
+    },
+    {
+      "name": "3. Count matching assets",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const START = 0, MAX = 1;",
+              "// Builds the search request from the collection variables.",
+              "const fields = pm.collectionVariables.get('fields').split(',').map(f => f.trim()).filter(f => f && f !== 'xip.reference' && f !== 'xip.top_level_so');",
+              "const folders = (pm.collectionVariables.get('folderRefs') || '').split(',').map(f => f.trim()).filter(f => f);",
+              "const filters = [{ name: 'xip.document_type', values: ['IO'] }];   // assets only",
+              "if (folders.length) filters.push({ name: 'xip.parent_hierarchy', values: folders });",
+              "['xip.top_level_so'].concat(fields).forEach(f => filters.push({ name: f, values: [] }));   // return these fields",
+              "const body = [ { key: 'start', value: String(START) }, { key: 'max', value: String(MAX) },",
+              "               { key: 'q', value: JSON.stringify({ q: '%', fields: filters }) },",
+              "               { key: 'metadata', value: 'xip.reference' }, { key: 'metadata', value: 'xip.top_level_so' } ];",
+              "fields.forEach(f => body.push({ key: 'metadata', value: f }));",
+              "pm.request.body.update({ mode: 'urlencoded', urlencoded: body });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "if (pm.response.code !== 200) { console.log(`Search failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 500)); next(null); return; }",
+              "const total = pm.response.json().value.totalHits;",
+              "pm.collectionVariables.set('total', String(total));",
+              "pm.collectionVariables.set('start', '0');",
+              "pm.collectionVariables.set('rows', '[]');",
+              "const folders = (pm.collectionVariables.get('folderRefs') || '').split(',').map(f => f.trim()).filter(f => f);",
+              "console.log(`${total} asset(s) ${folders.length ? 'in the ' + folders.length + ' chosen folder(s)' : 'across all top-level folders'}. Collecting them now.`);",
+              "if (!total) next(null);",
+              "pm.test(`${total} assets match`, () => pm.expect(total).to.be.above(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": []
+        },
+        "url": "https://{{server}}/api/content/search",
+        "description": "Counts the assets that match (all top-level folders, or those in `folderRefs`) and clears earlier results. The request body is filled in automatically from the `fields` and `folderRefs` variables."
+      }
+    },
+    {
+      "name": "4. Get one page of results",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const START = Number(pm.collectionVariables.get('start') || 0);",
+              "const MAX = Number(pm.collectionVariables.get('pageSize') || 100);",
+              "// Builds the search request from the collection variables.",
+              "const fields = pm.collectionVariables.get('fields').split(',').map(f => f.trim()).filter(f => f && f !== 'xip.reference' && f !== 'xip.top_level_so');",
+              "const folders = (pm.collectionVariables.get('folderRefs') || '').split(',').map(f => f.trim()).filter(f => f);",
+              "const filters = [{ name: 'xip.document_type', values: ['IO'] }];   // assets only",
+              "if (folders.length) filters.push({ name: 'xip.parent_hierarchy', values: folders });",
+              "['xip.top_level_so'].concat(fields).forEach(f => filters.push({ name: f, values: [] }));   // return these fields",
+              "const body = [ { key: 'start', value: String(START) }, { key: 'max', value: String(MAX) },",
+              "               { key: 'q', value: JSON.stringify({ q: '%', fields: filters }) },",
+              "               { key: 'metadata', value: 'xip.reference' }, { key: 'metadata', value: 'xip.top_level_so' } ];",
+              "fields.forEach(f => body.push({ key: 'metadata', value: f }));",
+              "pm.request.body.update({ mode: 'urlencoded', urlencoded: body });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "if (pm.response.code !== 200) { console.log(`Search failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 500)); next(null); return; }",
+              "const v = pm.response.json().value;",
+              "const fields = pm.collectionVariables.get('fields').split(',').map(f => f.trim()).filter(f => f && f !== 'xip.reference' && f !== 'xip.top_level_so');",
+              "const names = JSON.parse(pm.collectionVariables.get('folderNames') || '{}');",
+              "const text = x => Array.isArray(x) ? x.join(' | ') : (x == null ? '' : String(x));",
+              "const rows = JSON.parse(pm.collectionVariables.get('rows') || '[]');",
+              "v.metadata.forEach((rec, i) => {",
+              "    const byName = {}; rec.forEach(f => byName[f.name] = text(f.value));",
+              "    const ref = (v.objectIds[i] || '').split('|').pop();",
+              "    const top = byName['xip.top_level_so'] || '';",
+              "    rows.push([ref, names[top] || top].concat(fields.map(f => byName[f] || '')));",
+              "});",
+              "pm.collectionVariables.set('rows', JSON.stringify(rows));",
+              "const start = Number(pm.collectionVariables.get('start')) + v.metadata.length;",
+              "pm.collectionVariables.set('start', String(start));",
+              "if (v.metadata.length > 0 && start < v.totalHits) {",
+              "    console.log(`Collected ${rows.length} of ${v.totalHits}.`);",
+              "    next(pm.info.requestName);   // repeat for the next page",
+              "} else {",
+              "    console.log(`All results are in: ${rows.length} of ${v.totalHits}. Open 5. Show the results as a CSV > Visualize.`);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": []
+        },
+        "url": "https://{{server}}/api/content/search",
+        "description": "Fetches the next `pageSize` assets and adds them to the results; in the Collection Runner it repeats until every page is in."
+      }
+    },
+    {
+      "name": "5. Show the results as a CSV",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const fields = pm.collectionVariables.get('fields').split(',').map(f => f.trim()).filter(f => f && f !== 'xip.reference' && f !== 'xip.top_level_so');",
+              "const header = ['xip.reference', 'top_level_folder'].concat(fields);",
+              "const rows = JSON.parse(pm.collectionVariables.get('rows') || '[]');",
+              "const esc = s => /[\",\\r\\n]/.test(s) ? '\"' + s.replace(/\"/g, '\"\"') + '\"' : s;",
+              "const csv = [header].concat(rows).map(r => r.map(esc).join(',')).join('\\r\\n');",
+              "const perFolder = {}; rows.forEach(r => perFolder[r[1] || '(top level)'] = (perFolder[r[1] || '(top level)'] || 0) + 1);",
+              "console.log(`${rows.length} assets, ${header.length} columns. By top-level folder: ` + Object.entries(perFolder).map(([k, n]) => `${k}: ${n}`).join('; '));",
+              "const template = `",
+              "<style>body{font-family:sans-serif;font-size:13px} table{border-collapse:collapse;margin-top:10px}",
+              "td,th{border:1px solid #ccc;padding:3px 6px;text-align:left;vertical-align:top;max-width:300px}",
+              "textarea{width:100%;height:160px;font-family:monospace;font-size:12px} button{font-size:14px;padding:4px 12px}</style>",
+              "<p><b>{{count}} assets</b> from {{folders}} top-level folder(s), {{cols}} columns.",
+              "<button onclick=\"var b=new Blob(['\\\\ufeff'+document.getElementById('csv').value],{type:'text/csv'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='preservica_metadata.csv';document.body.appendChild(a);a.click();\">Download CSV</button></p>",
+              "<p>If the button doesn't download anything: click in the box, select all, copy, and paste into a new file saved with a .csv ending.</p>",
+              "<textarea id=\"csv\" readonly>{{csv}}</textarea>",
+              "<table><tr>{{#each header}}<th>{{this}}</th>{{/each}}</tr>",
+              "{{#each preview}}<tr>{{#each this}}<td>{{this}}</td>{{/each}}</tr>{{/each}}</table>",
+              "{{#if more}}<p>The table shows the first 200 rows; the CSV has all of them.</p>{{/if}}`;",
+              "pm.visualizer.set(template, { csv, count: rows.length, folders: Object.keys(perFolder).filter(k => k !== '(top level)').length, cols: header.length, header, preview: rows.slice(0, 200), more: rows.length > 200 });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/versiondetails/version",
+        "description": "Builds the CSV from the collected results. Open the response's **Visualize** tab to download it or copy it. (The request itself only checks the connection; the work happens in its script.)"
+      }
+    }
+  ]
+}

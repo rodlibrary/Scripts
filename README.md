@@ -15,7 +15,7 @@ Each folder has its own README with setup steps, commands and options. Open a fo
 | [**metadata**](metadata/) | Read and write metadata for WAV, video, WebVTT and images; count PDF pages; extract entities; summarize documents | Local |
 | [**ocr**](ocr/) | Make images and PDFs searchable with Tesseract, OCRmyPDF or Gemini | Local / HPC |
 | [**pii**](pii/) | Find and redact personal information: quick PDF scan, Presidio with human review, and an HPC pipeline | Local / HPC |
-| [**preservica**](preservica/) | Write download counts from Preservica audit logs into asset metadata | Local |
+| [**preservica**](preservica/) | Export Preservica metadata to CSV (also weekly on GitHub Actions); read, download and update records through the API or Postman; write download counts into asset metadata | Local / GitHub Actions / Postman |
 | [**transcription**](transcription/) | Speech to text with Whisper / WhisperX (with speaker labels) | HPC |
 | [**video**](https://github.com/rodlibrary/video_pipeline) | Multi-stage AV collection pipeline: transcripts, keyframes, AI descriptions and discovery outputs. Lives in its own repository, [rodlibrary/video_pipeline](https://github.com/rodlibrary/video_pipeline) | Local / HPC |
 | [**virus_scan**](virus_scan/) | Scan a folder with Microsoft Defender and export detections to CSV | Windows |
