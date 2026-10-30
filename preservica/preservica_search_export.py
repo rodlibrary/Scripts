@@ -152,7 +152,8 @@ def main():
     ap.add_argument("--folder", help="Only records underneath this folder (UUID).")
     ap.add_argument("--type", choices=TYPE_FILTERS, default="assets",
                     help="Which records to export (default: assets).")
-    ap.add_argument("--query", default="%", help='Search query (default "%%" = everything).')
+    ap.add_argument("--query", default="*",
+                    help='Search query (default "*" = everything; Preservica 9.4 returns nothing for "%%").')
     ap.add_argument("--output", default="preservica_export_{date}.csv",
                     help="Output CSV. {date} becomes YYYY-MM-DD.")
     ap.add_argument("--credentials", default="credentials.properties")

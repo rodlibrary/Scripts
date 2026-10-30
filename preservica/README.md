@@ -90,6 +90,7 @@ The CSV is written as `preservica_export_<date>.csv` (change it with `--output`)
 - Fields with several values, such as subjects, go into one cell separated by ` | `. The CSV opens correctly in Excel, accented characters included.
 - The script writes a `.partial` file first and renames it only when the export finishes, so a failed run never leaves a half-finished CSV.
 - If nothing matches, the script stops without writing a file and explains why: how many records the account can see, how many are under the folder, and how many match each filter. `--allow-empty` writes the empty file anyway.
+- The search asks for everything with the query `*`. Preservica 9.4 returns nothing for `%`, which pyPreservica uses by default, so keep `*` if you pass your own `--query`.
 - Only indexed fields can be exported. `xip.full_text` is in `fields.txt` but turned off: it would put each document's whole extracted text in a cell.
 
 ### Scheduled export on GitHub Actions
@@ -172,7 +173,7 @@ python preservica_search_test.py <folder-reference>
 
 It sends the search nine slightly different ways and prints the result count or error for each, plus a look-up of the folder through the search API and the Entity API. It only reads. The output has no password or token, so it can be shared.
 
-- Some searches return results and others don't: the export's search needs changing to the form that works.
+- Some searches return results and others don't: the export's search needs changing to the form that works. (On Rod Library's Preservica 9.4, `%` returned 0 and `*` returned everything, which is why the export now uses `*`.)
 - Every search returns 0, but the folder look-ups work: the account can read records but not search them. Ask your Preservica administrator about its search permission, or whether the search index needs rebuilding.
 - The search-API look-up fails but the Entity API one works: the account isn't allowed to use the search API.
 

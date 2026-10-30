@@ -98,16 +98,16 @@ def main():
                                   data={"start": "0", "max": "5", "metadata": metadata, "q": json.dumps(q)}))
 
     print("Search requests (POST /api/content/search):")
-    search('1. everything, query "%" (what the export uses)', {"q": "%"})
-    search('2. everything, query "*"', {"q": "*"})
+    search('1. everything, query "%" (what the export used to send)', {"q": "%"})
+    search('2. everything, query "*" (what the export sends now)', {"q": "*"})
     search('3. everything, empty query', {"q": ""})
-    search('4. "%" with the export\'s reference field', {"q": "%", "fields": [{"name": "xip.reference", "values": []}]})
-    search('5. "%" under the folder', {"q": "%", "fields": [{"name": "xip.parent_hierarchy", "values": [folder]}]})
-    search('6. assets only', {"q": "%", "fields": [{"name": "xip.document_type", "values": ["IO"]}]})
+    search('4. "*" with the export\'s reference field', {"q": "*", "fields": [{"name": "xip.reference", "values": []}]})
+    search('5. "*" under the folder', {"q": "*", "fields": [{"name": "xip.parent_hierarchy", "values": [folder]}]})
+    search('6. "*", assets only', {"q": "*", "fields": [{"name": "xip.document_type", "values": ["IO"]}]})
 
     print("\nOther checks:")
-    show("7. GET /api/content/search?q=%", requests.get(f"{base}/api/content/search", headers=h, timeout=60,
-         params={"q": json.dumps({"q": "%"}), "start": 0, "max": 5, "metadata": "xip.title"}))
+    show("7. GET /api/content/search?q=*", requests.get(f"{base}/api/content/search", headers=h, timeout=60,
+         params={"q": json.dumps({"q": "*"}), "start": 0, "max": 5, "metadata": "xip.title"}))
     show("8. the folder through the search API (object-details)", requests.get(
          f"{base}/api/content/object-details", headers=h, timeout=60, params={"id": f"sdb:SO|{folder}"}))
     show("9. the folder through the Entity API", requests.get(
