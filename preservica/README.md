@@ -32,7 +32,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 
 ## Before you start
 
-**Account.** The scripts and collections log in as a Preservica account and see only what that account can see. Use the service account. It needs:
+**Service Account.** The scripts and collections log in using a Preservica service account and see only what that account can see. Use the service account. It needs:
 
 - a Preservica password of its own (a university single sign-on login can't be used by the API);
 - **Read Metadata** on the security tags of the records you want. An administrator sets this per tag in Preservica's `sdb/security.html` page. *Read Content* alone isn't enough: without Read Metadata, searches return nothing and records look empty;
