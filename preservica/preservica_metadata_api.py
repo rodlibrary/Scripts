@@ -51,24 +51,66 @@ def keep_default_namespace(elem):
         ET.register_namespace("", elem.tag[1:].split("}", 1)[0])
 
 
+CREDENTIAL_KEYS = {"username": "PRESERVICA_USERNAME", "password": "PRESERVICA_PASSWORD",
+                   "tenant": "PRESERVICA_TENANT", "server": "PRESERVICA_SERVER"}
+
+
+def load_credentials(path="credentials.properties"):
+    """
+    Read the Preservica login from environment variables or credentials.properties.
+
+    A non-empty PRESERVICA_* environment variable wins. Otherwise the value comes
+    from credentials.properties, looked for first in the current folder and then
+    next to this script. Exits with a plain explanation if anything is missing.
+    """
+    import configparser
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [path] if os.path.isabs(path) else [os.path.abspath(path), os.path.join(here, path)]
+    found = next((p for p in candidates if os.path.isfile(p)), None)
+
+    file_values = {}
+    if found:
+        cfg = configparser.RawConfigParser(interpolation=None)
+        try:
+            cfg.read(found, encoding="utf-8-sig")
+        except (configparser.Error, UnicodeError) as exc:
+            sys.exit(f"Couldn't read {found}: {exc}\nThe first line must be [credentials], "
+                     "and the file should be saved as plain text (UTF-8).")
+        section = next((s for s in cfg.sections() if s.strip().lower() == "credentials"), None)
+        if section is None:
+            sys.exit(f"{found} has no [credentials] line. Add it as the very first line.")
+        file_values = {k.lower(): v.strip().strip("\"'") for k, v in cfg[section].items()}
+
+    creds, missing = {}, []
+    for key, env in CREDENTIAL_KEYS.items():
+        value = (os.environ.get(env) or "").strip() or file_values.get(key, "")
+        if not value or "REPLACE_WITH" in value:
+            missing.append(key)
+        creds[key] = value
+    creds["two_fa"] = (os.environ.get("PRESERVICA_2FA_TOKEN") or "").strip() or file_values.get("twofactortoken") or None
+
+    if missing:
+        looked = "\n".join(f"  {p}" for p in dict.fromkeys(candidates))
+        if found:
+            problem = f"{found} has no value for: {', '.join(missing)}."
+        else:
+            problem = f"No credentials.properties found. Looked in:\n{looked}"
+            for p in candidates:
+                if os.path.isfile(p + ".txt"):
+                    problem += f"\nFound {p}.txt instead: rename it to remove the .txt ending."
+        sys.exit(f"{problem}\nThe file needs a [credentials] line followed by username=, password=, "
+                 "server= and tenant= lines (see credentials.properties.example).")
+    if creds["server"].startswith("http") or "/" in creds["server"]:
+        sys.exit(f"server should be just the host name, e.g. us.preservica.com (it is {creds['server']!r}).")
+    return creds
+
 class Preservica:
     """A minimal client: logs in, sends the token header, logs in again if the token expires."""
 
     def __init__(self, credentials_path):
-        cfg = configparser.RawConfigParser(interpolation=None)
-        cfg.read(credentials_path, encoding="utf-8-sig")
-        file_values = cfg["credentials"] if "credentials" in cfg else {}
-
-        def value(key, env):
-            v = os.environ.get(env) or file_values.get(key)
-            if not v:
-                sys.exit(f"Missing {key}: set {env} or add {key}= to {credentials_path}")
-            return v.strip()
-
-        self.username = value("username", "PRESERVICA_USERNAME")
-        self.password = value("password", "PRESERVICA_PASSWORD")
-        self.tenant = value("tenant", "PRESERVICA_TENANT")
-        self.server = value("server", "PRESERVICA_SERVER")
+        c = load_credentials(credentials_path)
+        self.username, self.password = c["username"], c["password"]
+        self.tenant, self.server = c["tenant"], c["server"]
         self.base = f"https://{self.server}"
         self.http = requests.Session()
         self.login()

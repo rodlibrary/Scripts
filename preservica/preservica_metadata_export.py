@@ -35,6 +35,7 @@ import argparse
 import csv
 import datetime as dt
 import logging
+import os
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -173,6 +174,59 @@ def build_row(client, entity, schema_filter):
     return row
 
 
+CREDENTIAL_KEYS = {"username": "PRESERVICA_USERNAME", "password": "PRESERVICA_PASSWORD",
+                   "tenant": "PRESERVICA_TENANT", "server": "PRESERVICA_SERVER"}
+
+
+def load_credentials(path="credentials.properties"):
+    """
+    Read the Preservica login from environment variables or credentials.properties.
+
+    A non-empty PRESERVICA_* environment variable wins. Otherwise the value comes
+    from credentials.properties, looked for first in the current folder and then
+    next to this script. Exits with a plain explanation if anything is missing.
+    """
+    import configparser
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [path] if os.path.isabs(path) else [os.path.abspath(path), os.path.join(here, path)]
+    found = next((p for p in candidates if os.path.isfile(p)), None)
+
+    file_values = {}
+    if found:
+        cfg = configparser.RawConfigParser(interpolation=None)
+        try:
+            cfg.read(found, encoding="utf-8-sig")
+        except (configparser.Error, UnicodeError) as exc:
+            sys.exit(f"Couldn't read {found}: {exc}\nThe first line must be [credentials], "
+                     "and the file should be saved as plain text (UTF-8).")
+        section = next((s for s in cfg.sections() if s.strip().lower() == "credentials"), None)
+        if section is None:
+            sys.exit(f"{found} has no [credentials] line. Add it as the very first line.")
+        file_values = {k.lower(): v.strip().strip("\"'") for k, v in cfg[section].items()}
+
+    creds, missing = {}, []
+    for key, env in CREDENTIAL_KEYS.items():
+        value = (os.environ.get(env) or "").strip() or file_values.get(key, "")
+        if not value or "REPLACE_WITH" in value:
+            missing.append(key)
+        creds[key] = value
+    creds["two_fa"] = (os.environ.get("PRESERVICA_2FA_TOKEN") or "").strip() or file_values.get("twofactortoken") or None
+
+    if missing:
+        looked = "\n".join(f"  {p}" for p in dict.fromkeys(candidates))
+        if found:
+            problem = f"{found} has no value for: {', '.join(missing)}."
+        else:
+            problem = f"No credentials.properties found. Looked in:\n{looked}"
+            for p in candidates:
+                if os.path.isfile(p + ".txt"):
+                    problem += f"\nFound {p}.txt instead: rename it to remove the .txt ending."
+        sys.exit(f"{problem}\nThe file needs a [credentials] line followed by username=, password=, "
+                 "server= and tenant= lines (see credentials.properties.example).")
+    if creds["server"].startswith("http") or "/" in creds["server"]:
+        sys.exit(f"server should be just the host name, e.g. us.preservica.com (it is {creds['server']!r}).")
+    return creds
+
 def main():
     ap = argparse.ArgumentParser(description="Export Preservica metadata to CSV.")
     ap.add_argument("--folder", help="Reference (UUID) of the folder to export. "
@@ -195,7 +249,9 @@ def main():
     )
 
     out_path = args.output.replace("{date}", dt.date.today().isoformat())
-    client = EntityAPI(credentials_path=args.credentials)
+    c = load_credentials(args.credentials)
+    client = EntityAPI(username=c["username"], password=c["password"], tenant=c["tenant"],
+                       server=c["server"], two_fa_secret_key=c["two_fa"])
     log.info("Connected to %s", client.server)
 
     entities = client.all_descendants(args.folder) if args.folder else client.all_descendants()
