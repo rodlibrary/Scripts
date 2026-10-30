@@ -26,6 +26,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | [`API_GUIDE.md`](API_GUIDE.md) | How to use Preservica's Swagger pages, and the requests for reading, downloading and updating metadata | – |
 | [`postman/`](postman/) | Three ready-made Postman collections: read one record, download all metadata, selected metadata to CSV | Postman |
 | [`check_preservica_login.py`](check_preservica_login.py) | Checks the credentials file and shows exactly why a login fails | Any computer with Python 3 |
+| [`preservica_search_test.py`](preservica_search_test.py) | Tries the search several ways and shows what each returns, to find out why an export finds 0 records when the account can open them | Any computer with Python 3 |
 | [`credentials.properties.example`](credentials.properties.example) | Template for the login file the Python scripts read | – |
 | [`downloadCount.py`](downloadCount.py) | Counts downloads of each asset from the audit logs and writes the count into the asset's metadata | Any computer with Python 3 |
 | [`preservica_download_collection_urls.py`](preservica_download_collection_urls.py) | Lists the download link of every asset in a folder (and its subfolders) in a CSV | Any computer with Python 3 |
@@ -160,6 +161,20 @@ python check_preservica_login.py
 ```
 
 Run it in the folder that holds `credentials.properties`. It shows where each value comes from (the file or an environment variable, which takes priority), flags common mistakes (quotes, spaces, placeholder text, a full web address as the server), then tries to log in and prints the server's exact answer. It never shows the password.
+
+## preservica_search_test.py
+
+If `preservica_search_export.py` (or the scheduled export) says the account can see 0 records, but the account can open records in Preservica or with `preservica_metadata_export.py`, run:
+
+```powershell
+python preservica_search_test.py <folder-reference>
+```
+
+It sends the search nine slightly different ways and prints the result count or error for each, plus a look-up of the folder through the search API and the Entity API. It only reads. The output has no password or token, so it can be shared.
+
+- Some searches return results and others don't: the export's search needs changing to the form that works.
+- Every search returns 0, but the folder look-ups work: the account can read records but not search them. Ask your Preservica administrator about its search permission, or whether the search index needs rebuilding.
+- The search-API look-up fails but the Entity API one works: the account isn't allowed to use the search API.
 
 ## downloadCount.py
 
