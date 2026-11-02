@@ -10,23 +10,23 @@ Use this when Google Takeout isn't an option and rclone can't be run on a local 
 
 ## 1. Install rclone on the HPC (once)
 
-First check whether the HPC already provides it:
+Install it into your Python environment in `/data/$USER/pve`, like the other HPC scripts in this repository:
 
 ```bash
-module avail rclone
+python -m venv /data/$USER/pve
+/data/$USER/pve/bin/pip install rclone-bin
+/data/$USER/pve/bin/rclone version
 ```
 
-If it's listed, `module load rclone` and skip to step 2. Otherwise, install it in your home directory (no admin rights needed):
-
-```bash
-mkdir -p ~/bin && cd ~/bin
-curl -O https://downloads.rclone.org/rclone-current-linux-amd64.zip
-unzip -j rclone-current-linux-amd64.zip '*/rclone'
-chmod +x rclone
-~/bin/rclone version
-```
+Use **`rclone-bin`**, not `rclone`: the pip package named `rclone` doesn't include the rclone program. [`rclone-bin`](https://pypi.org/project/rclone-bin/) repackages the official rclone releases for pip. It isn't made by the rclone project; if you'd rather use the official download, see [rclone.org/install](https://rclone.org/install/) and change `RCLONE=` in the job script to wherever you put it.
 
 Folder dates are copied only by **rclone 1.66 or newer**, so check the version.
+
+So the `rclone` commands below work as typed, add the environment to your path for this session:
+
+```bash
+export PATH="/data/$USER/pve/bin:$PATH"
+```
 
 ---
 
@@ -132,8 +132,10 @@ Save this as `gdrive_copy.script` in `/data/$USER/gdrive/`:
 
 cd "/data/$USER/gdrive" || exit 1
 
-# RCLONE -> rclone command ("rclone" if loaded as a module, else "$HOME/bin/rclone")
-RCLONE="$HOME/bin/rclone"
+# RCLONE -> The full path to rclone in your python
+#           virtual environment
+
+RCLONE="/data/$USER/pve/bin/rclone"
 
 # DEST   -> where copies go (use project/data storage, not scratch)
 DEST="/data/$USER/gdrive/staging"
@@ -167,7 +169,7 @@ SAFE_NAME=$(echo "$FOLDER" | tr '/ ' '__')
 | Setting | Change to |
 |---|---|
 | `#SBATCH --array=1-3%2` | `1-` the number of lines in `folders.txt` (`wc -l folders.txt`). Keep `%2`: more parallel tasks mostly cause Google rate-limit errors, not speed |
-| `RCLONE=` | `rclone` if you used `module load rclone`; also add `module load rclone` above this line |
+| `RCLONE=` | Only if rclone isn't in `/data/$USER/pve` |
 | `DEST=` | Optional: a different destination |
 
 If you're using a service account, add the two `--drive-service-account-file` / `--drive-impersonate` options to all three `rclone` commands.
