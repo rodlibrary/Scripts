@@ -79,11 +79,13 @@ This lets you sign in with your browser while rclone itself runs only on the HPC
 
 ### Option B: Service account (Google Workspace admin needed)
 
-A Workspace administrator creates a service account with domain-wide delegation and gives you its key file. No browser sign-in is needed, and the token won't expire partway through a long job. Add these options to the `rclone` commands below:
+A Workspace administrator creates a service account with domain-wide delegation and gives you its key file. No browser sign-in is needed, and the token won't expire partway through a long job. Add these options to the `rclone` commands below, naming the person whose Drive you're copying (in the job script, put them in `DRIVE_OPTS`):
 
 ```bash
 --drive-service-account-file /data/$USER/gdrive/key.json --drive-impersonate owner@uni.edu
 ```
+
+See [Other staff members' Drives](#other-staff-members-drives) for when to use this.
 
 ### Protect your credentials
 
@@ -102,6 +104,72 @@ rclone lsd gdrive:
 ```
 
 You should see your top-level Drive folders. For a **shared drive**, add `--drive-team-drive <ID>` to every command (the ID is the last part of the shared drive's URL). For files **shared with you**, add `--drive-shared-with-me`.
+
+### Other staff members' Drives
+
+rclone never asks for anyone's Google password. Passwords are typed only on Google's own sign-in page; rclone keeps the resulting access token in `rclone.conf`, or uses a service account's key file.
+
+To copy folders from other staff members on campus, use one of these. In every case, **never ask staff for their passwords**, and make sure the transfer is covered by your records schedule or transfer agreement with that office.
+
+| | How | Best for |
+|---|---|---|
+| **1. Staff share folders with you** | Staff share the folder with your account (**Viewer** is enough). You sign in as yourself | A few offices, one-time transfers. Simplest; no admin needed |
+| **2. Staff sign in themselves** | A separate remote for each person; they complete Google's sign-in | Copying everything a person owns, when sharing isn't practical |
+| **3. Service account** | IT sets up read-only, domain-wide access; you name the person to copy from | Many staff or ongoing transfers |
+
+#### 1. Folders shared with you
+
+1. Ask each staff member to share their folder with your Google account as **Viewer**.
+2. Sign in as yourself (Option A above). The folders appear under "Shared with me":
+
+   ```bash
+   rclone lsd gdrive: --drive-shared-with-me
+   ```
+
+3. Add `--drive-shared-with-me` to every `rclone` command you type, including the `folders.txt` and export checks in step 3.
+4. In the job script, set `DRIVE_OPTS=(--drive-shared-with-me)`.
+
+The original owner and creation and modified dates are still recorded in the manifest. You get only files you've been given access to: if some files inside a shared folder were restricted separately, they're skipped, and the log shows them.
+
+#### 2. Each staff member signs in
+
+1. In your tunnel session (Option A), run `rclone config` and create a new remote named for the person, such as `gdrive-jsmith`.
+2. When the sign-in link appears, have that person open it and sign in themselves.
+3. Use that name in place of `gdrive` in your commands (`rclone lsd gdrive-jsmith:`) and set `REMOTE="gdrive-jsmith"` in the job script.
+4. When their transfer is finished and checked, remove their access:
+
+   ```bash
+   rclone config delete gdrive-jsmith
+   ```
+
+   They can also revoke it at [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+
+While the remote exists, your `rclone.conf` gives full read access to their Drive, so keep it protected (`chmod 600`).
+
+#### 3. Service account
+
+Ask IT (Google Workspace administrators) for a service account with domain-wide delegation, limited to the `drive.readonly` scope. It can read any campus account, so it needs their approval. Store the key as described in Option B, then name the person you're copying from:
+
+```bash
+rclone lsd gdrive: --drive-service-account-file /data/$USER/gdrive/key.json --drive-impersonate jsmith@uni.edu
+```
+
+In the job script, set:
+
+```bash
+DRIVE_OPTS=(--drive-service-account-file "/data/$USER/gdrive/key.json" --drive-impersonate jsmith@uni.edu)
+```
+
+#### Keeping each person's files separate
+
+Use a separate folder list and job for each staff member, so folders with the same name (two people's `Photographs`, say) don't mix. In a copy of the job script, set for example:
+
+```bash
+FOLDERS="folders_jsmith.txt"
+PERSON="jsmith"
+```
+
+Their copies then go to `staging/jsmith/`, and their manifests and logs start with `jsmith__`.
 
 ---
 
@@ -189,28 +257,45 @@ RCLONE="/data/$USER/pve/bin/rclone"
 # DEST   -> where copies go (use project/data storage, not scratch)
 DEST="/data/$USER/gdrive/staging"
 
+# FOLDERS -> the list of Drive folders to copy
+FOLDERS="folders.txt"
+
+# REMOTE -> the rclone remote name from "rclone config"
+REMOTE="gdrive"
+
+# PERSON -> optional short name for whose Drive this is (e.g. jsmith).
+#           Copies go to DEST/PERSON, and manifests and logs start with it.
+PERSON=""
+
+# DRIVE_OPTS -> where the folders are. Leave empty for your own Drive.
+#   Shared with you:  DRIVE_OPTS=(--drive-shared-with-me)
+#   Service account:  DRIVE_OPTS=(--drive-service-account-file "/data/$USER/gdrive/key.json" --drive-impersonate jsmith@uni.edu)
+#   Shared drive:     DRIVE_OPTS=(--drive-team-drive <ID>)
+DRIVE_OPTS=()
+
 ######################################
 ## No need to modify anything below ##
 ######################################
 
 export RCLONE_CONFIG="$HOME/.config/rclone/rclone.conf"
-FOLDER=$(sed -n "${SLURM_ARRAY_TASK_ID}p" folders.txt)
-[ -n "$FOLDER" ] || { echo "No line ${SLURM_ARRAY_TASK_ID} in folders.txt"; exit 1; }
-SAFE_NAME=$(echo "$FOLDER" | tr '/ ' '__')
+FOLDER=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$FOLDERS")
+[ -n "$FOLDER" ] || { echo "No line ${SLURM_ARRAY_TASK_ID} in $FOLDERS"; exit 1; }
+SAFE_NAME="${PERSON:+${PERSON}__}$(echo "$FOLDER" | tr '/ ' '__')"
+OUT="${DEST}${PERSON:+/$PERSON}/${FOLDER}"
 
 # 1. Manifest: created and modified dates, owner, MIME type, MD5 and Drive ID
-"$RCLONE" lsjson -R --metadata --hash "gdrive:${FOLDER}" \
+"$RCLONE" lsjson -R --metadata --hash "${DRIVE_OPTS[@]}" "${REMOTE}:${FOLDER}" \
     > "manifests/${SAFE_NAME}.json"
 
 # 2. Copy (never "sync", which deletes files at the destination)
-"$RCLONE" copy "gdrive:${FOLDER}" "${DEST}/${FOLDER}" \
+"$RCLONE" copy "${REMOTE}:${FOLDER}" "$OUT" "${DRIVE_OPTS[@]}" \
     --drive-export-formats docx,xlsx,pptx,pdf \
     --metadata \
     --transfers 4 --checkers 8 --tpslimit 10 \
     --log-file "logs/${SAFE_NAME}.log" --log-level INFO
 
 # 3. Check: a dry run should find nothing left to copy
-"$RCLONE" copy "gdrive:${FOLDER}" "${DEST}/${FOLDER}" \
+"$RCLONE" copy "${REMOTE}:${FOLDER}" "$OUT" "${DRIVE_OPTS[@]}" \
     --drive-export-formats docx,xlsx,pptx,pdf \
     --dry-run --log-file "logs/${SAFE_NAME}_verify.log" --log-level INFO
 ```
@@ -220,8 +305,10 @@ SAFE_NAME=$(echo "$FOLDER" | tr '/ ' '__')
 | `#SBATCH --array=1-3%2` | `1-` the number of lines in `folders.txt` (`wc -l folders.txt`). Keep `%2`: more parallel tasks mostly cause Google rate-limit errors, not speed |
 | `RCLONE=` | Only if rclone isn't in `/data/$USER/pve` |
 | `DEST=` | Optional: a different destination |
-
-If you're using a service account, add the two `--drive-service-account-file` / `--drive-impersonate` options to all three `rclone` commands.
+| `FOLDERS=` | Optional: a different list, e.g. `folders_jsmith.txt` |
+| `REMOTE=` | Only if you named the remote something other than `gdrive` (e.g. `gdrive-jsmith`) |
+| `PERSON=` | When copying another staff member's folders, a short name such as `jsmith` |
+| `DRIVE_OPTS=` | For folders shared with you, a service account or a shared drive; see [Other staff members' Drives](#other-staff-members-drives) |
 
 ---
 
