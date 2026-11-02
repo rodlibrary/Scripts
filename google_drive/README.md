@@ -95,15 +95,45 @@ mkdir -p /data/$USER/gdrive/{staging,manifests,logs}
 cd /data/$USER/gdrive
 ```
 
-Create `folders.txt` with one Drive folder path per line, exactly as `rclone lsd` shows them:
+### folders.txt
+
+Create `folders.txt` with one Drive folder per line. Each line becomes one task in the job, so a large Drive is split into pieces that can be retried separately. Example:
 
 ```text
 Department Records/2019
 Department Records/2020
+Department Records/Committee Minutes
 Photographs
+Shared Projects/Oral History Project
 ```
 
-Each line becomes one task in the job, so a large Drive is split into pieces that can be retried separately.
+| Rule | Why |
+|---|---|
+| Write paths from the top of the Drive, exactly as `rclone lsd gdrive:` shows them, with `/` between folders and no leading or trailing `/` | rclone looks for the folder at exactly that path |
+| Leave spaces as they are; no quotes or escape characters | The script adds the quoting |
+| Match spelling and capitals exactly | Otherwise rclone won't find the folder |
+| No blank lines | Each line number is a task number, so a blank line becomes a task with nothing to copy |
+| All folders from one place: your Drive, one shared drive, or "shared with me" | Each needs different rclone options, so use a separate list and job for each |
+
+The number of lines sets the `--array` range in the job script (five lines: `--array=1-5%2`). Count them with:
+
+```bash
+wc -l folders.txt
+```
+
+**Generate the list instead of typing it.** One line for each top-level folder in the Drive:
+
+```bash
+rclone lsf gdrive: --dirs-only | sed 's:/$::' > folders.txt
+```
+
+For subfolders, list inside a parent folder and add the parent's name back to each line:
+
+```bash
+rclone lsf "gdrive:Department Records" --dirs-only | sed 's:/$::; s:^:Department Records/:' >> folders.txt
+```
+
+Open the file afterward and delete any folders you don't want copied.
 
 ### Check for files that can't be exported
 
