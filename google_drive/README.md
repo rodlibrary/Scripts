@@ -24,11 +24,28 @@ Use **`rclone-bin`**, not `rclone`: the pip package named `rclone` doesn't inclu
 
 Folder dates are copied only by **rclone 1.66 or newer**, so check the version.
 
-So the `rclone` commands below work as typed, add the environment to your path for this session:
+So the `rclone` commands below work as typed, add the environment to your path. This lasts only until you log out:
 
 ```bash
 export PATH="/data/$USER/pve/bin:$PATH"
 ```
+
+To make it permanent, so `rclone` works in every new session, add it to your login settings once:
+
+```bash
+echo 'export PATH="/data/$USER/pve/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+The job script doesn't need either step, because it uses the full path `/data/$USER/pve/bin/rclone`.
+
+**If you get `rclone: command not found`:** run the `export` line above (or add it to `~/.bashrc`), then `rclone version`. If it still isn't found, check that the program is where pip put it:
+
+```bash
+ls -l /data/$USER/pve/bin/rclone
+```
+
+If that file is missing, the install didn't finish; run `/data/$USER/pve/bin/pip install rclone-bin` again.
 
 ---
 
