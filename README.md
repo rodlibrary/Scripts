@@ -9,6 +9,7 @@ Each folder has its own README with setup steps, commands and options. Open a fo
 | [**arks**](arks/) | Generate Archival Resource Keys (ARKs) and ANVL records from a CSV | Local |
 | [**checksums**](checksums/) | Generate SHA-256 checksums for every file in a folder | Windows |
 | [**file_mgmt**](file_mgmt/) | Sort files into folders by name, merge PDFs per folder, remove empty folders | Windows |
+| [**google_drive**](google_drive/) | Copy Google Drive folders to archival storage with rclone, keeping file dates and a metadata manifest | HPC |
 | [**htt**](htt/) | Transcribe handwriting with Gemini and build searchable PDFs | Local |
 | [**images**](images/) | Find duplicate and near-duplicate images | Local |
 | [**iq**](iq/) | Convert Intranet Quorum / SCDIF exports and load them into BigQuery; generate and validate synthetic SCDIF test data | Local / HPC |

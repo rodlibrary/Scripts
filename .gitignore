@@ -6,3 +6,7 @@ credentials.properties.txt
 *.partial
 
 __pycache__/
+
+# Never commit rclone sign-in details or Google service account keys
+rclone.conf
+key.json
