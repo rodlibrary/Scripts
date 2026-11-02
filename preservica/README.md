@@ -49,8 +49,8 @@ python -m pip install pyPreservica requests
 
 ```
 [credentials]
-username=service-account@uni.edu
-password=your-password
+username=_______+service-account@_____
+password=service account password
 server=us.preservica.com
 tenant=UNIOWA
 ```
