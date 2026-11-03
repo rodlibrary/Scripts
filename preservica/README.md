@@ -13,7 +13,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | Look at, download or update one record's metadata | [`preservica_metadata_api.py`](#preservica_metadata_apipy), the [*read metadata* Postman collection](postman/), or Preservica's Swagger pages ([`API_GUIDE.md`](API_GUIDE.md)) |
 | See how much storage the content uses, split into hot and cold storage | The [*storage report* Postman collection](postman/) |
 | Each month's figures for the DCDS stats Google Sheet (Preservica, Storage and DCDS tabs), as a CSV | The [*monthly stats* Postman collection](postman/README.md#monthly-stats) |
-| A CSV of every asset with an ARK in its MODS identifier, with its Preservica reference | The [*assets with an ARK* Postman collection](postman/README.md#assets-with-an-ark) |
+| A CSV of every asset's ARK (MODS Archival Resource Key and Location (URL)), with its Preservica reference | The [*assets with an ARK* Postman collection](postman/README.md#assets-with-an-ark) |
 | Find out why a login fails | [`check_preservica_login.py`](#check_preservica_loginpy) |
 
 ## Files
@@ -158,7 +158,7 @@ Add `--folder` when the reference is a folder. `update` replaces the whole metad
 - **Selected metadata for all assets (CSV):** chosen indexed fields for every asset in every top-level folder, with a column naming each asset's top-level folder.
 - **Storage report (hot and cold):** how much storage the content uses, by tier (Hot, Cold), by storage location (such as `S3 Deep Glacier Adapter`) and by representation, with a CSV. Preservica has no single "storage used" request, so it measures each asset's files and where they are stored.
 - **Monthly stats (for the DCDS sheet):** the month's figures laid out like the DCDS_stats Google Sheet (the Preservica rows of the DCDS tab, Tier 1 of the Storage tab, and about 45 detailed rows for the Preservica tab), with boxes to paste and a CSV.
-- **Assets with an ARK (CSV):** every asset whose MODS identifier holds an ARK, with its Preservica reference, the ARK and chosen fields.
+- **Assets with an ARK (CSV):** each asset's MODS Archival Resource Key (ARK blade) and Location (URL), with its Preservica reference, the full ARK and chosen fields.
 
 See [`postman/README.md`](postman/README.md) for importing them.
 
