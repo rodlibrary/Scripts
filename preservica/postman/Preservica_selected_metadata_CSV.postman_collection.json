@@ -58,6 +58,9 @@
       "script": {
         "type": "text/javascript",
         "exec": [
+          "if (pm.response.code >= 500) {",
+          "    console.log(`Preservica returned ${pm.response.code} for ${pm.request.method} ${pm.request.url.toString()} at ${new Date().toISOString()}. Response: ` + pm.response.text().slice(0, 300));",
+          "}",
           "if (pm.response.code === 401 && !pm.info.requestName.startsWith('1. Log in')) {",
           "    pm.collectionVariables.set('tokenTime', '0');",
           "    console.log('The token was rejected (401). The next request will log in again first.');",
@@ -204,7 +207,7 @@
               "if (pm.response.code !== 200) { console.log(`Listing failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300)); next(null); return; }",
               "const firstPage = !pm.collectionVariables.get('topNextUrl');",
               "const top = firstPage ? [] : JSON.parse(pm.collectionVariables.get('top') || '[]');",
-              "for (const m of pm.response.text().matchAll(/<Child\\b([^>]*)>/g)) {",
+              "for (const m of pm.response.text().matchAll(/<(?:[\\w-]+:)?Child\\b([^>]*)>/g)) {",
               "    const a = {}; for (const x of m[1].matchAll(/(\\w+)=\"([^\"]*)\"/g)) a[x[1]] = unescape(x[2]);",
               "    top.push({ type: a.type, ref: a.ref, title: a.title });",
               "}",
