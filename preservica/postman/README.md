@@ -9,7 +9,7 @@ Six collections for [Postman](https://www.postman.com/downloads/) that call Rod 
 | [`Preservica_selected_metadata_CSV`](Preservica_selected_metadata_CSV.postman_collection.json) | Chosen indexed fields for every asset in every top-level folder, as a CSV with a `top_level_folder` column | No |
 | [`Preservica_storage_report`](Preservica_storage_report.postman_collection.json) | Storage used, by tier (Hot, Cold), by storage location and by representation (Preservation, Access), with a CSV. Also lists Preservica's Analytics datasets. | No |
 | [`Preservica_monthly_stats`](Preservica_monthly_stats.postman_collection.json) | The month's figures for the DCDS_stats Google Sheet: the DCDS tab's Preservica rows, the Storage tab's Tier 1 rows (Hot and Cold TB) and detailed rows for the Preservica tab, with boxes to paste and a CSV | No |
-| [`Preservica_ARK_assets_CSV`](Preservica_ARK_assets_CSV.postman_collection.json) | Every asset whose MODS identifier holds an ARK, with its Preservica reference, the ARK, its n2t.net link and chosen fields, as a CSV. Lists ARKs found in more than one asset. | No |
+| [`Preservica_ARK_assets_CSV`](Preservica_ARK_assets_CSV.postman_collection.json) | Every asset's MODS Archival Resource Key (ARK blade) and Location (URL), with its Preservica reference, the full ARK, whether the two agree, and chosen fields, as a CSV. Lists ARKs found in more than one asset. | No |
 
 ## Import
 
@@ -71,16 +71,35 @@ Things to know:
 
 ## Assets with an ARK
 
-Lists every asset whose MODS identifier holds an ARK, as a CSV.
+Reads two fields of each asset's MODS record and lists them, with the asset's Preservica reference, as a CSV:
 
-1. On the **Variables** tab, set `fields` to the other fields you want, separated by commas: any names from [`indexed_fields.csv`](../indexed_fields.csv). The default is `xip.title,mods.title,mods.dateCreated,xip.security_descriptor`.
-2. **Run collection** with requests 1 to 4 ticked, then open **4. Show the CSV** > **Visualize** and click **Download CSV**.
+- **Archival Resource Key:** `<identifier displayLabel="Archival Resource Key" type="ark">`, which holds the ARK blade;
+- **Location (URL):** `<physicalLocation displayLabel="Location (URL)" type="url"><url>`, which holds the full URL.
 
-Columns: `preservica_reference` (the UUID), `preservica_ref` (`IO_<UUID>`, the form the ARK manifest in the Redirects repository uses), `record_type`, `ark` (`ark:/32498/…`; several separated by ` | `), `ark_url` (at `https://n2t.net`), `top_level_folder`, `mods.identifier (all values)`, then your `fields`.
+Preservica's search index keeps identifier values but not their `type`, and doesn't index the URL, so the collection reads each asset's MODS record: about 2 requests per asset.
+
+1. On the **Variables** tab, set `fields` to any other fields you want, separated by commas: names from [`indexed_fields.csv`](../indexed_fields.csv). The default is `mods.dateCreated,xip.security_descriptor`; the title is always included.
+2. **Run collection** with requests 1 to 5 ticked. Request 4 repeats until every asset is read, 5 per send. If you send the requests one at a time instead, send 4 again until its **Visualize** tab says all are done.
+3. Open **5. Show the CSV** > **Visualize** and click **Download CSV**.
+
+Columns:
+
+| Column | What it holds |
+|---|---|
+| `preservica_reference` | The asset's reference (UUID) |
+| `preservica_ref` | `IO_<UUID>`, as in the Redirects repository's ARK manifest |
+| `title` | The asset's title |
+| `ark_blade (Archival Resource Key)` | The Archival Resource Key identifier, as entered |
+| `location_url (Location (URL))` | The Location (URL), as entered |
+| `ark` | The full ARK: from the URL if it holds one, otherwise `ark:/32498/` plus the blade |
+| `ark_status` | `both, match`; `both, DIFFERENT` (the blade and URL name different ARKs); `URL has no ARK`; `blade only`; `URL only`; `neither`; or a problem reading the record |
+| `source_id` | The MODS Source ID (local identifier) |
+| `top_level_folder` | The asset's top-level folder |
+| then | Your `fields` |
 
 Things to know:
 
-- **Preservica's index keeps the values of MODS `<identifier>` but not its `type` attribute,** so the collection keeps the assets whose identifier contains an ARK: `ark:/32498/x7k9q`, `ark:32498/x7k9q` or a link such as `https://n2t.net/ark:/32498/x7k9q`. Assets with only other identifiers are counted on the report and left out.
-- `naan` (default `32498`, Rod Library's) limits it to ARKs under that NAAN; leave it blank for any. `recordTypes` set to `IO,SO` includes folders, and `folderRefs` limits it to some folders.
-- **ARKs found in more than one asset** are listed on the report, since a redirect needs exactly one target.
-- If the CSV is empty or an ARK is missing, send **5. Debug: show raw responses**. It shows how many records have a `mods.identifier`, how Preservica indexed a few of them, and one asset's MODS record (`debugAsset` picks which).
+- **`onlyWithArk`** (default `true`) lists only assets with a blade or a URL. Set it to `false` and send request 5 again to list every asset, including those whose ARK fields are still empty.
+- **ARKs found in more than one asset** are listed on the report (ignoring hyphens, which carry no meaning in ARKs), since a redirect needs exactly one target.
+- `naan` (default `32498`) goes in front of a bare blade. `folderRefs` limits the run to some folders.
+- If a value is missing or wrong, send **6. Debug: one asset's MODS**. It shows an asset's MODS record (the first with an ARK, or the one in `debugAsset`), what the collection read from it, and how far the last run got.
