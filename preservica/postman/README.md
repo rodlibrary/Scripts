@@ -1,6 +1,6 @@
 # Postman collections for Preservica
 
-Four collections for [Postman](https://www.postman.com/downloads/) that call Rod Library's Preservica (`us.preservica.com`, tenant `UNIOWA`). Each has step-by-step instructions in its **Overview** panel and a note on every request.
+Five collections for [Postman](https://www.postman.com/downloads/) that call Rod Library's Preservica (`us.preservica.com`, tenant `UNIOWA`). Each has step-by-step instructions in its **Overview** panel and a note on every request.
 
 | Collection | What it does | Changes records? |
 |---|---|---|
@@ -8,6 +8,7 @@ Four collections for [Postman](https://www.postman.com/downloads/) that call Rod
 | [`Preservica_download_all_metadata`](Preservica_download_all_metadata.postman_collection.json) | Exports every top-level folder as a ZIP (OPEX package) holding the full metadata of every asset as XML. One automatic run starts and waits for all the exports; then one **Send and Download** per folder saves the ZIPs. | No |
 | [`Preservica_selected_metadata_CSV`](Preservica_selected_metadata_CSV.postman_collection.json) | Chosen indexed fields for every asset in every top-level folder, as a CSV with a `top_level_folder` column | No |
 | [`Preservica_storage_report`](Preservica_storage_report.postman_collection.json) | Storage used, by tier (Hot, Cold), by storage location and by representation (Preservation, Access), with a CSV. Also lists Preservica's Analytics datasets. | No |
+| [`Preservica_monthly_stats`](Preservica_monthly_stats.postman_collection.json) | The month's figures for the DCDS_stats Google Sheet: the DCDS tab's Preservica rows, the Storage tab's Tier 1 rows (Hot and Cold TB) and detailed rows for the Preservica tab, with boxes to paste and a CSV | No |
 
 ## Import
 
@@ -22,7 +23,7 @@ When you import a newer version, choose **Replace**, then enter the username and
 
 ## Notes
 
-- All four log in by themselves: run *1. Log in* first, and later requests log in again when the 15-minute token is about to expire or is rejected.
+- All five log in by themselves: run *1. Log in* first, and later requests log in again when the 15-minute token is about to expire or is rejected.
 - The account sees only records it has **Read Metadata** permission for. An empty folder list or 0 results means the account needs that permission on the records' security tags.
 - The *download all metadata* collection also needs permission to export. A `403` when an export starts means the account lacks it.
 - The *selected metadata* collection keeps its results inside Postman. For tens of thousands of assets, [`preservica_search_export.py`](../preservica_search_export.py) or the scheduled GitHub export copes better.
@@ -44,3 +45,24 @@ Things to know:
 - **The account needs the Access functional role, with Read Metadata and Read Content.** Without it, Preservica refuses some of the requests, and the report's yellow box says which, with the HTTP code.
 - **Compare the totals with Preservica's own figures for the account.** They cover only what the account can see, and Preservica's billing can include things this doesn't (content deleted but not yet removed, metadata, thumbnails).
 - **If the report is empty or looks wrong,** send **6. Debug: show one asset's raw responses** on its own after a run. It follows one asset (the first measured, or the one in `debugAsset`) through each step and shows Preservica's raw answers on its **Visualize** tab, which shows where the collection loses track. It contains no password or token.
+
+## Monthly stats
+
+Run it once a month to get the figures for the **DCDS_stats** Google Sheet, then copy them in by hand.
+
+1. Run it on the last day of the month or in the first five days of the next: in the first five days it reports the month that just ended. To pick a month, set `month` (such as `2026-10`).
+2. **Run collection** with every request ticked. Like the storage report, it makes several requests per asset, so a few hundred assets take a few minutes.
+3. Open **6. Show the monthly figures** and its **Visualize** tab:
+   - **DCDS tab: Preservica rows.** Copy the box of seven values, click the month's cell in the `#Collections` row, and paste: they fill `#Collections` down to `#Downloads`.
+   - **Storage tab: Tier 1.** `#TBPreservicaHot` and `#TBPreservicaCold`, in TB with 2 decimal places, in a box to paste the same way.
+   - **Preservica tab.** About 45 rows of category, metric and value. The first time, type `Category` and `Metric` in A2 and B2 and the month names January to December in C1 to N1 (as on the other tabs), then paste the first box at cell A3: it fills in the labels and puts the values in the month's column. In later months, paste the values-only box into the month's cell of the Content `#Collections` row. A new collection, storage location or security tag adds a row, so check the labels still line up, and insert a row first where one was added.
+   - **Download CSV** saves everything as `preservica_stats_<month>.csv` (columns Tab, Category, Metric and the month).
+
+Things to know:
+
+- **The DCDS rows show what was added that month** (records created in it), like the tab's other monthly rows. Set `dcdsCounts` to `total` and send request 6 again for all-time totals.
+- **`#Downloads`** is the month's change in Preservica's all-time download counter. Postman saves each month's all-time count in `downloadsHistory` on your computer, so the first month is blank. To fill it, put the previous month's all-time count in `previousDownloadsAllTime`, send request 6 again, then clear the variable. Run it from the same Postman each month, and choose **Replace** but keep the current value of `downloadsHistory` when importing a newer version (or note `#DownloadsAllTime` each month and use `previousDownloadsAllTime`).
+- **Everything else is measured as of the run**, so run it near the end of the month.
+- **Hot and Cold** follow `coldPattern`, as in the storage report. **Images, sound, moving images and text** come from each asset's Preservation format group; the FormatGroups rows list the groups found. **Duplicates** are files whose SHA1 checksum also appears in another asset.
+- `integrityChecks` set to `false` skips the integrity-check rows and one request per file.
+- The report's yellow boxes say what's missing and why. HTTP 401 or 403 means the service account needs the Access functional role with Read Metadata and Read Content.
