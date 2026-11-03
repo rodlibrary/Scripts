@@ -1,0 +1,601 @@
+{
+  "info": {
+    "name": "Preservica - storage report (hot and cold)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "# Storage used, by hot and cold storage\n\nWorks out how much storage Rod Library's Preservica content uses in each storage location, and totals it as **Hot** and **Cold**. Preservica doesn't publish a single \"storage used\" request, so this collection measures it: for every asset it reads each file's size and the storage locations that hold the file, then adds them up. It also lists Preservica's Analytics datasets, in case one of them already reports storage for your system.\n\n**Before you start:** on this collection's **Variables** tab, fill in `username` and `password` in the **Current value** column, then click **Save**. Optional variables:\n- `folderRefs`: folder references, separated by commas, to measure only those folders (blank = everything);\n- `allGenerations`: `true` (default) counts every stored generation of every file, which is what takes up storage; `false` counts only the current (active) ones;\n- `coldPattern`: storage location names matching this count as Cold (default `glacier|deep|cold|archive|tape|offline`; everything else is Hot).\n\n## Steps\n\n1. Click the collection's **⋯** menu > **Run collection**, and click **Run**. It logs in, lists the Analytics datasets, finds every asset, and measures them one at a time (several requests per asset, so a few thousand assets take a while). The **Console** shows progress, e.g. `Measured 120 of 207 assets`.\n2. When it finishes, open **5. Show the storage report** and click its response's **Visualize** tab: totals by tier, by storage location, by storage location and representation (Preservation, Access), and by generation, plus a **Download CSV** button.\n3. Check the **By storage location** table: each location's tier is guessed from its name. If one is in the wrong tier, change `coldPattern` and send request 5 again; nothing needs measuring again.\n\n## Notes\n\n- A file kept in two locations (say a hot copy and a cold copy) counts in both, because it uses storage in both.\n- The figures cover what the logged-in account can see. An account without **Read Metadata** on some records misses those records. Preservica's own billing figures can also include things this doesn't (deleted content awaiting removal, metadata, thumbnails), so treat this as a breakdown of your content, and compare its totals with what Preservica reports for your account.\n- **2. List Analytics datasets** shows what reporting datasets your Preservica offers (`GET /api/analytics/datasets`). If one is about storage, its details are in **2b**, and its documentation is on your server at `/api/analytics/documentation.html`.\n- Running the collection again starts over: request 3 clears the previous results.\n"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "Preservica-Access-Token",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{token}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Logs in again automatically when the token is missing or over 12 minutes old.",
+          "if (pm.info.requestName.startsWith('1. Log in')) return;",
+          "const age = Date.now() - Number(pm.collectionVariables.get('tokenTime') || 0);",
+          "if (pm.collectionVariables.get('token') && age < 12 * 60 * 1000) return;",
+          "pm.sendRequest({",
+          "    url: `https://${pm.collectionVariables.get('server')}/api/accesstoken/login`,",
+          "    method: 'POST',",
+          "    body: { mode: 'urlencoded', urlencoded: [",
+          "        { key: 'username', value: pm.collectionVariables.get('username') },",
+          "        { key: 'password', value: pm.collectionVariables.get('password') },",
+          "        { key: 'tenant', value: pm.collectionVariables.get('tenant') } ] }",
+          "}, (err, res) => {",
+          "    if (!err && res.code === 200) {",
+          "        pm.collectionVariables.set('token', res.json().token);",
+          "        pm.collectionVariables.set('tokenTime', String(Date.now()));",
+          "        console.log('Logged in again (token refreshed).');",
+          "    } else {",
+          "        console.log('Automatic login failed: ' + (err || res.text()));",
+          "    }",
+          "});"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.response.code >= 500) {",
+          "    console.log(`Preservica returned ${pm.response.code} for ${pm.request.method} ${pm.request.url.toString()} at ${new Date().toISOString()}. Response: ` + pm.response.text().slice(0, 300));",
+          "}",
+          "if (pm.response.code === 401 && !pm.info.requestName.startsWith('1. Log in')) {",
+          "    pm.collectionVariables.set('tokenTime', '0');",
+          "    console.log('The token was rejected (401). The next request will log in again first.');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "server",
+      "value": "us.preservica.com"
+    },
+    {
+      "key": "tenant",
+      "value": "UNIOWA"
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "tokenTime",
+      "value": "0"
+    },
+    {
+      "key": "folderRefs",
+      "value": ""
+    },
+    {
+      "key": "allGenerations",
+      "value": "true"
+    },
+    {
+      "key": "coldPattern",
+      "value": "glacier|deep|cold|archive|tape|offline"
+    },
+    {
+      "key": "datasetId",
+      "value": ""
+    },
+    {
+      "key": "start",
+      "value": "0"
+    },
+    {
+      "key": "assets",
+      "value": "[]"
+    },
+    {
+      "key": "assetIndex",
+      "value": "0"
+    },
+    {
+      "key": "totals",
+      "value": "{}"
+    },
+    {
+      "key": "shownErrors",
+      "value": "0"
+    },
+    {
+      "key": "debugAsset",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Log in",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    pm.collectionVariables.set('token', pm.response.json().token);",
+              "    pm.collectionVariables.set('tokenTime', String(Date.now()));",
+              "    // A new run starts from scratch, even if an earlier run was stopped part-way.",
+              "    ['start', 'assetIndex'].forEach(k => pm.collectionVariables.set(k, '0'));",
+              "    pm.collectionVariables.set('assets', '[]'); pm.collectionVariables.set('totals', '{}');",
+              "    pm.collectionVariables.set('shownErrors', '0');",
+              "    pm.collectionVariables.set('topNextUrl', '');   // a new run always lists folders from the start",
+              "    console.log('Logged in. Later requests log in again by themselves when the token nears its 15-minute limit.');",
+              "} else {",
+              "    console.log('Login failed: ' + pm.response.text());",
+              "}",
+              "pm.test('Logged in', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "username",
+              "value": "{{username}}",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{password}}",
+              "type": "text"
+            },
+            {
+              "key": "tenant",
+              "value": "{{tenant}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": "https://{{server}}/api/accesstoken/login",
+        "description": "`POST /api/accesstoken/login`. Checks the username, password and tenant, and saves the token. Every later request sends it in the `Preservica-Access-Token` header and logs in again by itself when it's about to expire."
+      }
+    },
+    {
+      "name": "2. List Analytics datasets",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code !== 200) { console.log(`Analytics datasets: HTTP ${pm.response.code}. ` + pm.response.text().slice(0, 300)); return; }",
+              "let data; try { data = pm.response.json(); } catch (e) { console.log('Analytics datasets (not JSON): ' + pm.response.text().slice(0, 500)); return; }",
+              "const list = Array.isArray(data) ? data : (data.value || data.datasets || data.items || []);",
+              "const rows = (Array.isArray(list) ? list : [list]).map(d => ({ id: d.apiId || d.id || '', name: d.name || d.title || '', description: d.description || '' }));",
+              "rows.forEach(d => console.log(`Dataset ${d.id}: ${d.name}${d.description ? ' - ' + d.description : ''}`));",
+              "const storage = rows.filter(d => /storage|size|byte|capacity|usage/i.test(d.id + ' ' + d.name + ' ' + d.description));",
+              "console.log(storage.length ? `Storage-related: ${storage.map(d => d.id).join(', ')}. Put one in the datasetId variable and run 2b.` : 'No dataset mentions storage; the measured report (requests 3 to 5) is the way to get the figures.');",
+              "if (storage.length && !pm.collectionVariables.get('datasetId')) pm.collectionVariables.set('datasetId', storage[0].id);",
+              "pm.visualizer.set(`<style>body{font-family:sans-serif;font-size:13px} td,th{border:1px solid #ccc;padding:3px 8px;text-align:left} table{border-collapse:collapse}</style><table><tr><th>apiId</th><th>Name</th><th>Description</th></tr>{{#each rows}}<tr><td>{{id}}</td><td>{{name}}</td><td>{{description}}</td></tr>{{/each}}</table>`, { rows });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "https://{{server}}/api/analytics/datasets",
+        "description": "`GET /api/analytics/datasets`: the reporting datasets your Preservica offers. The Console lists them and points out any about storage. Informational: the rest of the collection doesn't depend on it, and a 403 or 404 here (if the API isn't available to this account or edition) doesn't stop the run."
+      }
+    },
+    {
+      "name": "2b. Show one Analytics dataset",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.collectionVariables.get('datasetId')) { console.log('Set the datasetId variable (from request 2) to see a dataset.'); }"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code !== 200) { console.log(`Dataset ${pm.collectionVariables.get('datasetId')}: HTTP ${pm.response.code}`); return; }",
+              "console.log('Dataset details: ' + pm.response.text().slice(0, 3000));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "https://{{server}}/api/analytics/datasets/{{datasetId}}",
+        "description": "`GET /api/analytics/datasets/{datasetId}`: the details of one dataset, including what it contains and how to fetch it. Skipped harmlessly when `datasetId` is blank."
+      }
+    },
+    {
+      "name": "3. Find the assets to measure",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// The first page of a new run starts over.",
+              "if (!pm.collectionVariables.get('start') || pm.collectionVariables.get('start') === '0') {",
+              "    pm.collectionVariables.set('start', '0'); pm.collectionVariables.set('assets', '[]');",
+              "    pm.collectionVariables.set('assetIndex', '0'); pm.collectionVariables.set('totals', '{}');",
+              "}",
+              "const folders = (pm.collectionVariables.get('folderRefs') || '').split(',').map(f => f.trim()).filter(f => f);",
+              "const fields = [{ name: 'xip.document_type', values: ['IO'] }];",
+              "if (folders.length) fields.push({ name: 'xip.parent_hierarchy', values: folders });",
+              "pm.request.body.update({ mode: 'urlencoded', urlencoded: [",
+              "    { key: 'start', value: String(pm.collectionVariables.get('start') || 0) },",
+              "    { key: 'max', value: '100' },",
+              "    { key: 'q', value: JSON.stringify({ q: '*', fields }) },   // '*', not '%': Preservica 9.4 returns nothing for '%'",
+              "    { key: 'metadata', value: 'xip.title' } ] });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "if (pm.response.code !== 200) { console.log(`Search failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300)); next(null); return; }",
+              "const v = pm.response.json().value;",
+              "const assets = JSON.parse(pm.collectionVariables.get('assets') || '[]');",
+              "v.objectIds.forEach(id => { const m = id.match(/IO\\|([0-9a-fA-F-]{36})/); if (m) assets.push(m[1]); });",
+              "pm.collectionVariables.set('assets', JSON.stringify(assets));",
+              "const start = Number(pm.collectionVariables.get('start') || 0) + v.objectIds.length;",
+              "pm.collectionVariables.set('start', String(start));",
+              "if (v.objectIds.length && start < v.totalHits) { next(pm.info.requestName); return; }",
+              "console.log(`${assets.length} asset(s) to measure. Measuring them now (this makes several requests per asset).`);",
+              "pm.collectionVariables.set('start', '0');   // ready for the next run"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": []
+        },
+        "url": "https://{{server}}/api/content/search",
+        "description": "Lists every asset (or those in `folderRefs`) with the Content API search, 100 at a time, and clears the results of any earlier run. The body is filled in automatically."
+      }
+    },
+    {
+      "name": "4. Measure the next asset",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const assets = JSON.parse(pm.collectionVariables.get('assets') || '[]');",
+              "const i = Number(pm.collectionVariables.get('assetIndex') || 0);",
+              "const ref = assets[Math.min(i, Math.max(assets.length - 1, 0))] || 'none';",
+              "pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/information-objects/${ref}/representations`;"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "(async () => {",
+              "// ---- helpers ------------------------------------------------------------",
+              "const server = pm.collectionVariables.get('server');",
+              "const call = (url, opts = {}) => new Promise((resolve, reject) => {",
+              "    const r = { url, header: { 'Preservica-Access-Token': pm.collectionVariables.get('token') } };",
+              "    if (opts.method) r.method = opts.method;",
+              "    if (opts.body) r.body = opts.body;",
+              "    pm.sendRequest(r, (err, res) => err ? reject(err) : resolve(res));",
+              "});",
+              "const http = {};   // \"step HTTP code\" -> count, for this asset",
+              "const step = url => /storage-locations$/.test(url) ? 'storage-locations' : /\\/bitstreams\\/\\d+$/.test(url) ? 'file'",
+              "    : /\\/generations\\/\\d+$/.test(url) ? 'generation' : /\\/generations$/.test(url) ? 'generations'",
+              "    : /\\/representations\\//.test(url) ? 'representation' : 'other';",
+              "async function get(url) {",
+              "    const res = await getRaw(url);",
+              "    const k = `${step(url)} HTTP ${res ? res.code : 'error'}`; http[k] = (http[k] || 0) + 1;",
+              "    if (res && res.code !== 200) {",
+              "        const shown = Number(pm.collectionVariables.get('shownErrors') || 0);",
+              "        if (shown < 5) { console.log(`HTTP ${res.code} for ${url.replace(/^https?:\\/\\/[^/]+/, '')}: ${res.text().slice(0, 200)}`); pm.collectionVariables.set('shownErrors', String(shown + 1)); }",
+              "    }",
+              "    return res;",
+              "}",
+              "async function getRaw(url) {",
+              "    for (let attempt = 1; attempt <= 4; attempt++) {",
+              "        let res;",
+              "        try { res = await call(url); } catch (e) { if (attempt === 4) throw e; continue; }",
+              "        if (res.code === 401 && attempt < 4) { await relogin(); continue; }",
+              "        if ([429, 500, 502, 503, 504].includes(res.code) && attempt < 4) { await new Promise(r => setTimeout(r, 1000 * attempt)); continue; }",
+              "        return res;",
+              "    }",
+              "}",
+              "async function relogin() {",
+              "    const res = await call(`https://${server}/api/accesstoken/login`, { method: 'POST', body: { mode: 'urlencoded', urlencoded: [",
+              "        { key: 'username', value: pm.collectionVariables.get('username') },",
+              "        { key: 'password', value: pm.collectionVariables.get('password') },",
+              "        { key: 'tenant', value: pm.collectionVariables.get('tenant') } ] } });",
+              "    if (res.code === 200) { pm.collectionVariables.set('token', res.json().token); pm.collectionVariables.set('tokenTime', String(Date.now())); }",
+              "}",
+              "const tag = (name) => `(?:[\\\\w-]+:)?${name}`;   // matches <Name> and <ns:Name>",
+              "const all = (text, re) => [...text.matchAll(re)].map(m => m[1].trim());",
+              "// ---- measure one asset -------------------------------------------------",
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const assets = JSON.parse(pm.collectionVariables.get('assets') || '[]');",
+              "const i = Number(pm.collectionVariables.get('assetIndex') || 0);",
+              "if (i >= assets.length) { console.log('All assets measured. Open 5. Show the storage report > Visualize.'); next('5. Show the storage report'); return; }",
+              "const ref = assets[i];",
+              "const totals = JSON.parse(pm.collectionVariables.get('totals') || '{}');",
+              "const allGenerations = String(pm.collectionVariables.get('allGenerations')).toLowerCase() !== 'false';",
+              "const add = (bucket, key, bytes) => { bucket[key] = bucket[key] || { files: 0, bytes: 0 }; bucket[key].files += 1; bucket[key].bytes += bytes; };",
+              "",
+              "async function measure() {",
+              "    const reps = pm.response.text();",
+              "    http[`representations HTTP ${pm.response.code}`] = 1;",
+              "    if (pm.response.code !== 200) throw new Error(`representations: HTTP ${pm.response.code}` + ([401, 403].includes(pm.response.code) ? ' (the account may lack a role or permission for this record)' : ''));",
+              "    const repLinks = [...reps.matchAll(new RegExp(`<${tag('Representation')}\\\\b([^>]*)>([^<]+)</`, 'g'))]",
+              "        .map(m => ({ type: (m[1].match(/type=\"([^\"]+)\"/) || [])[1] || 'Unknown', url: m[2].trim() }));",
+              "    const seen = new Set();",
+              "    trace.representations = repLinks.length;",
+              "    for (const rep of repLinks) {",
+              "        const repXml = (await get(rep.url)).text();",
+              "        // The element holds a bare reference in some versions and a full URL in others:",
+              "        // keep just the UUID, once each.",
+              "        const coRefs = [...new Set(all(repXml, new RegExp(`<${tag('ContentObject')}\\\\b[^>]*>([^<]+)</`, 'g'))",
+              "            .map(t => (t.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/) || [''])[0])",
+              "            .filter(Boolean))];",
+              "        trace.contentObjects += coRefs.length;",
+              "        for (const co of coRefs) {",
+              "            const gensXml = (await get(`https://${server}/api/entity/content-objects/${co}/generations`)).text();",
+              "            const genUrls = all(gensXml, new RegExp(`<${tag('Generation')}\\\\b[^>]*>(https?://[^<]+)</`, 'g'));",
+              "            trace.generations += genUrls.length;",
+              "            for (const genUrl of genUrls) {",
+              "                const genXml = (await get(genUrl)).text();",
+              "                const active = /\\bactive=\"true\"/.test((genXml.match(new RegExp(`<${tag('Generation')}\\\\b[^>]*>`)) || [''])[0]);",
+              "                if (!active && !allGenerations) continue;",
+              "                const bsUrls = all(genXml, new RegExp(`<${tag('Bitstream')}\\\\b[^>]*>(https?://[^<]+)</`, 'g'));",
+              "                for (const bsUrl of bsUrls) {",
+              "                    if (seen.has(bsUrl)) continue; seen.add(bsUrl); trace.files += 1;",
+              "                    const bsXml = (await get(bsUrl)).text();",
+              "                    const bytes = Number((bsXml.match(new RegExp(`<${tag('FileSize')}\\\\b[^>]*>(\\\\d+)</`)) || [0, 0])[1]);",
+              "                    const locRes = await get(`${bsUrl}/storage-locations`);",
+              "                    let adapters = [];",
+              "                    if (locRes.code === 200) {",
+              "                        const block = (locRes.text().match(new RegExp(`<${tag('StorageLocation')}\\\\b[^>]*>([\\\\s\\\\S]*?)</${tag('StorageLocation')}>`)) || ['', ''])[1];",
+              "                        adapters = [...new Set(all(block, /\\bname=\"([^\"]+)\"/g))];",
+              "                    }",
+              "                    if (!adapters.length) adapters = [locRes.code === 200 ? '(no storage location listed)' : `(storage locations: HTTP ${locRes.code})`];",
+              "                    for (const a of adapters) { add(totals.byAdapter = totals.byAdapter || {}, a, bytes); add(totals.byAdapterRep = totals.byAdapterRep || {}, `${a}\\t${rep.type}`, bytes); }",
+              "                    add(totals.content = totals.content || {}, active ? 'active' : 'older generations', bytes);",
+              "                }",
+              "            }",
+              "        }",
+              "    }",
+              "}",
+              "",
+              "// Name the next request before measuring, so the Runner keeps looping even if it",
+              "// finishes this script early.",
+              "next(i + 1 < assets.length ? pm.info.requestName : '5. Show the storage report');",
+              "const trace = { representations: 0, contentObjects: 0, generations: 0, files: 0 };",
+              "try {",
+              "    await measure();",
+              "    if (!trace.files) console.log(`Asset ${ref}: no files found (${trace.representations} representation(s), ${trace.contentObjects} content object(s), ${trace.generations} generation(s)); requests: ${JSON.stringify(http)}`);",
+              "    else if (i === 0) console.log(`First asset ${ref}: ${trace.representations} representation(s), ${trace.contentObjects} content object(s), ${trace.generations} generation(s), ${trace.files} file(s); requests: ${JSON.stringify(http)}`);",
+              "} catch (e) {",
+              "    totals.errors = (totals.errors || 0) + 1;",
+              "    (totals.failed = totals.failed || []).push(ref);",
+              "    if (!totals.firstError) totals.firstError = `${e.message || e}` + (e.stack ? ` (${String(e.stack).split('\\n').slice(1, 2).join('').trim()})` : '');",
+              "    console.log(`Asset ${ref}: ${e.message || e}. Counted as failed; moving on.`);",
+              "}",
+              "totals.assets = (totals.assets || 0) + 1;",
+              "if (!trace.files) totals.empty = (totals.empty || 0) + 1;",
+              "totals.http = totals.http || {};",
+              "Object.entries(http).forEach(([k, n]) => totals.http[k] = (totals.http[k] || 0) + n);",
+              "pm.collectionVariables.set('totals', JSON.stringify(totals));",
+              "pm.collectionVariables.set('assetIndex', String(i + 1));",
+              "if ((i + 1) % 10 === 0 || i + 1 === assets.length) console.log(`Measured ${i + 1} of ${assets.length} assets.`);",
+              "next(i + 1 < assets.length ? pm.info.requestName : '5. Show the storage report');",
+              "})();"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/information-objects/representations",
+        "description": "Measures one asset and moves on to the next: its representations (`/api/entity/information-objects/{ref}/representations`), their content objects, every generation (`/api/entity/content-objects/{ref}/generations`), each file's size (`.../bitstreams/{n}`) and the storage locations holding it (`.../bitstreams/{n}/storage-locations`). The address is filled in automatically; in the Collection Runner it repeats until every asset is done."
+      }
+    },
+    {
+      "name": "5. Show the storage report",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const totals = JSON.parse(pm.collectionVariables.get('totals') || '{}');",
+              "const cold = new RegExp(pm.collectionVariables.get('coldPattern') || 'glacier|deep|cold|archive|tape|offline', 'i');",
+              "const tierOf = a => a.startsWith('(') ? 'Unknown' : (cold.test(a) ? 'Cold' : 'Hot');",
+              "const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];",
+              "const human = n => { let u = 0; while (n >= 1024 && u < units.length - 1) { n /= 1024; u++; } return `${n.toFixed(u ? 2 : 0)} ${units[u]}`; };",
+              "const byAdapter = Object.entries(totals.byAdapter || {}).map(([a, t]) => ({ adapter: a, tier: tierOf(a), files: t.files, bytes: t.bytes, size: human(t.bytes) }))",
+              "    .sort((x, y) => y.bytes - x.bytes);",
+              "const tiers = {};",
+              "byAdapter.forEach(r => { tiers[r.tier] = tiers[r.tier] || { files: 0, bytes: 0 }; tiers[r.tier].files += r.files; tiers[r.tier].bytes += r.bytes; });",
+              "const byTier = Object.entries(tiers).map(([tier, t]) => ({ tier, files: t.files, bytes: t.bytes, size: human(t.bytes) }));",
+              "const byRep = Object.entries(totals.byAdapterRep || {}).map(([k, t]) => { const [adapter, rep] = k.split('\\t');",
+              "    return { tier: tierOf(adapter), adapter, representation: rep, files: t.files, bytes: t.bytes, size: human(t.bytes) }; })",
+              "    .sort((x, y) => (x.tier + x.adapter + x.representation).localeCompare(y.tier + y.adapter + y.representation));",
+              "const content = Object.entries(totals.content || {}).map(([k, t]) => ({ kind: k, files: t.files, size: human(t.bytes) }));",
+              "const requests = Object.entries(totals.http || {}).sort().map(([k, n]) => ({ request: k.replace(/ HTTP .*/, ''), status: k.replace(/.* HTTP /, ''), count: n }));",
+              "const refused = requests.filter(r => r.status !== '200');",
+              "let problem = '';",
+              "if (!totals.assets) problem = 'No assets were measured. Run the whole collection (Run collection), not single requests, and check in the Console that request 3 found assets.';",
+              "else if (!byAdapter.length && totals.errors && !refused.length) problem = `Every asset stopped with an error in the measuring script (${totals.errors} of ${totals.assets}): \"${totals.firstError || 'no message'}\". Send this message to whoever maintains this collection.`;",
+              "else if (!byAdapter.length) problem = refused.length",
+              "    ? `No file sizes could be read: Preservica refused ${refused.map(r => `${r.count} \"${r.request}\" request(s) with HTTP ${r.status}`).join(', ')}. ` + (refused.some(r => ['401', '403'].includes(r.status))",
+              "        ? ' HTTP 401 or 403 means the account lacks a role or permission for those records: check its roles (such as the Access functional role) and that it has Read Metadata and Read Content on their security tags, then run the collection again.'",
+              "        : '') + (refused.some(r => r.status === '404')",
+              "        ? ' HTTP 404 means Preservica has nothing at the address that was asked for, which points to the collection reading a reference wrongly: send the HTTP 404 lines from the Console to whoever maintains this collection.'",
+              "        : '')",
+              "    : 'The assets were read, but none of them listed any files. The Console shows, for each asset, how many representations, content objects and generations were found.';",
+              "if (!byAdapter.length && totals.errors && totals.firstError && !problem.includes(totals.firstError))",
+              "    problem += ` ${totals.errors} asset(s) stopped with an error: \"${totals.firstError}\".`;",
+              "const csv = ['tier,storage_location,representation,files,bytes,size']",
+              "    .concat(byRep.map(r => [r.tier, `\"${r.adapter.replace(/\"/g, '\"\"')}\"`, r.representation, r.files, r.bytes, r.size].join(',')))",
+              "    .concat(byTier.map(r => [r.tier, '(all)', '(all)', r.files, r.bytes, r.size].join(','))).join('\\r\\n');",
+              "console.log(`Storage report: ${totals.assets || 0} assets. ` + (byTier.map(t => `${t.tier}: ${t.size}`).join(', ') || 'no files measured') + (totals.errors ? `. ${totals.errors} asset(s) failed: ${(totals.failed || []).join(', ')}` : '') + (problem ? ` ${problem}` : ''));",
+              "const template = `",
+              "<style>body{font-family:sans-serif;font-size:13px} table{border-collapse:collapse;margin:6px 0 16px} td,th{border:1px solid #ccc;padding:3px 8px;text-align:left}",
+              "td.n{text-align:right} h3{margin:14px 0 4px} textarea{width:100%;height:110px;font-family:monospace;font-size:12px} button{font-size:14px;padding:4px 12px}</style>",
+              "{{#if problem}}<p style=\\\"background:#fff3cd;border:1px solid #e0c36c;padding:8px\\\"><b>No storage figures.</b> {{problem}}</p>{{/if}}",
+              "<p><b>{{assets}} assets processed</b>{{#if errors}}, {{errors}} of them could not be measured (listed in the Console){{/if}}. Files kept in two places count in both.",
+              "<button onclick=\"var b=new Blob(['\\\\ufeff'+document.getElementById('csv').value],{type:'text/csv'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='preservica_storage.csv';document.body.appendChild(a);a.click();\">Download CSV</button></p>",
+              "<h3>By tier</h3><table><tr><th>Tier</th><th>Files</th><th>Size</th></tr>{{#each byTier}}<tr><td>{{tier}}</td><td class=n>{{files}}</td><td class=n>{{size}}</td></tr>{{/each}}</table>",
+              "<h3>By storage location</h3><table><tr><th>Storage location</th><th>Tier</th><th>Files</th><th>Size</th></tr>{{#each byAdapter}}<tr><td>{{adapter}}</td><td>{{tier}}</td><td class=n>{{files}}</td><td class=n>{{size}}</td></tr>{{/each}}</table>",
+              "<p>The tier comes from the location's name: names matching <code>{{coldPattern}}</code> count as Cold. Change the <code>coldPattern</code> variable if a location is in the wrong tier, then run this request again.</p>",
+              "<h3>By storage location and representation</h3><table><tr><th>Tier</th><th>Storage location</th><th>Representation</th><th>Files</th><th>Size</th></tr>{{#each byRep}}<tr><td>{{tier}}</td><td>{{adapter}}</td><td>{{representation}}</td><td class=n>{{files}}</td><td class=n>{{size}}</td></tr>{{/each}}</table>",
+              "<h3>Generations</h3><table><tr><th>Files from</th><th>Files</th><th>Size</th></tr>{{#each content}}<tr><td>{{kind}}</td><td class=n>{{files}}</td><td class=n>{{size}}</td></tr>{{/each}}</table>",
+              "<h3>Requests to Preservica</h3><table><tr><th>Request</th><th>Answer (HTTP)</th><th>Count</th></tr>{{#each requests}}<tr><td>{{request}}</td><td>{{status}}</td><td class=n>{{count}}</td></tr>{{/each}}</table>",
+              "<p>200 means the request succeeded. 401 and 403 mean the account isn't allowed to read those records; 404 means Preservica didn't find them.</p>",
+              "<p>CSV (if the button doesn't download anything, copy this into a file ending in .csv):</p><textarea readonly>{{csv}}</textarea>",
+              "<textarea id=csv style=display:none>{{csv}}</textarea>`;",
+              "pm.visualizer.set(template, { assets: totals.assets || 0, errors: totals.errors || 0, byTier, byAdapter, byRep, content, csv, requests, problem, coldPattern: cold.source });",
+              "(pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(null) : postman.setNextRequest(null);   // stop here; 6 is for debugging only"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/versiondetails/version",
+        "description": "Builds the report from the measured totals: open the response's **Visualize** tab. (The request itself only checks the connection; the work happens in its script.) Send it again after changing `coldPattern`."
+      }
+    },
+    {
+      "name": "6. Debug: show one asset's raw responses",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const assets = JSON.parse(pm.collectionVariables.get('assets') || '[]');",
+              "const ref = (pm.collectionVariables.get('debugAsset') || assets[0] || 'none').trim();",
+              "pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/information-objects/${ref}/representations`;"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Fetches each step for one asset and shows Preservica's raw answers, so a format",
+              "// the collection doesn't recognise can be seen. Nothing is changed.",
+              "(async () => {",
+              "const server = pm.collectionVariables.get('server');",
+              "const send = url => new Promise((ok, fail) => pm.sendRequest({ url, header: { 'Preservica-Access-Token': pm.collectionVariables.get('token') } }, (e, r) => e ? fail(e) : ok(r)));",
+              "const uuid = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;",
+              "const steps = [];",
+              "const show = (name, url, res) => { steps.push({ name, url: url.replace(/^https?:\\/\\/[^/]+/, ''), code: res.code, body: res.text().slice(0, 4000) });",
+              "    console.log(`${name}: HTTP ${res.code} ${url.replace(/^https?:\\/\\/[^/]+/, '')}\\n${res.text().slice(0, 1500)}`); return res.text(); };",
+              "const assets = JSON.parse(pm.collectionVariables.get('assets') || '[]');",
+              "const ref = (pm.collectionVariables.get('debugAsset') || assets[0] || '').trim();",
+              "if (!ref) { console.log('Run the collection once (or put an asset reference in debugAsset) first.'); return; }",
+              "const first = (text, re) => { const m = text.match(re); return m ? m[1].trim() : ''; };",
+              "const repsXml = show('1 representations', pm.request.url.toString(), pm.response);",
+              "const repUrl = first(repsXml, /<(?:[\\w-]+:)?Representation\\b[^>]*>(https?:\\/\\/[^<]+)</);",
+              "if (repUrl) {",
+              "    const repXml = show('2 representation', repUrl, await send(repUrl));",
+              "    const co = ((repXml.match(/<(?:[\\w-]+:)?ContentObject\\b[^>]*>([^<]+)</) || [])[1] || '').match(uuid);",
+              "    if (co) {",
+              "        const gensUrl = `https://${server}/api/entity/content-objects/${co[0]}/generations`;",
+              "        const gensXml = show('3 generations', gensUrl, await send(gensUrl));",
+              "        const genUrl = first(gensXml, /<(?:[\\w-]+:)?Generation\\b[^>]*>(https?:\\/\\/[^<]+)</);",
+              "        if (genUrl) {",
+              "            const genXml = show('4 generation', genUrl, await send(genUrl));",
+              "            const bsUrl = first(genXml, /<(?:[\\w-]+:)?Bitstream\\b[^>]*>(https?:\\/\\/[^<]+)</);",
+              "            if (bsUrl) {",
+              "                show('5 file', bsUrl, await send(bsUrl));",
+              "                show('6 storage locations', `${bsUrl}/storage-locations`, await send(`${bsUrl}/storage-locations`));",
+              "            } else console.log('Step 4 lists no file addresses the collection recognises: the answer above shows the real layout.');",
+              "        } else console.log('Step 3 lists no version addresses the collection recognises: the answer above shows the real layout.');",
+              "    } else console.log('Step 2 lists no content-object references the collection recognises: the answer above shows the real layout.');",
+              "} else console.log('Step 1 lists no representation addresses the collection recognises: the answer above shows the real layout.');",
+              "const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');",
+              "pm.visualizer.set(`<style>body{font-family:sans-serif;font-size:12px} pre{white-space:pre-wrap;word-break:break-all;background:#f6f6f6;padding:6px;border:1px solid #ddd}</style>",
+              "<p>Raw answers for asset <b>${ref}</b>. Copy this page (or the Console lines) to whoever maintains this collection; it contains no password or token.</p>` +",
+              "    steps.map(s => `<h4>${s.name}: HTTP ${s.code}</h4><div>${esc(s.url)}</div><pre>${esc(s.body)}</pre>`).join(''), {});",
+              "})();"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/information-objects/representations",
+        "description": "Not part of the normal run. Send it on its own after a run (or with an asset reference in `debugAsset`): it follows one asset through each step and shows Preservica's raw answers on the **Visualize** tab, to find out why files aren't being recognised."
+      }
+    }
+  ]
+}
