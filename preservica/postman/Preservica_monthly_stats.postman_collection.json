@@ -1,7 +1,8 @@
 {
   "info": {
+    "_postman_id": "6f1c2d4e-8a3b-4c5d-9e7f-0a1b2c3d4e5f",
     "name": "Preservica - monthly stats (for the DCDS sheet)",
-    "description": "# Monthly Preservica figures for the DCDS stats sheet\n\nMeasures Preservica and shows the month's figures laid out like the **DCDS_stats** Google Sheet, with a CSV to download, so you can copy them into the sheet by hand. Nothing in Preservica is changed.\n\n**Before you start:** on this collection's **Variables** tab, fill in `username` and `password` in the **Current value** column (current values stay on your computer; initial values sync to Postman's servers), then click **Save**.\n\n## Each month\n\n1. Run it on the last day of the month or in the first five days of the next. In the first five days of a month it reports the month that just ended. To choose a month yourself, set `month` (e.g. `2026-10`).\n2. Click the collection's **⋯** menu > **Run collection**, keep every request ticked, and click **Run**. It makes several requests per asset, so a few hundred assets take a few minutes; the **Console** shows progress. You can also **Send** requests 1 to 6 one at a time: request 5 then measures for about 45 seconds per send. Wait for each send to finish, and send it again until its **Visualize** tab says all assets are done (Postman keeps a request's results only when it finishes).\n3. Open **6. Show the monthly figures** and its **Visualize** tab. It shows:\n   - **DCDS tab: Preservica rows** (#Collections, #Assets, #Images, #SoundRecordings, #MovingImages, #Text, #Downloads), with a box of the seven values: copy it, click the month's cell in the #Collections row, and paste;\n   - **Storage tab: Tier 1** #TBPreservicaHot and #TBPreservicaCold, in TB;\n   - **Preservica tab:** about 45 detailed rows (category, metric, value): one box to paste at A3 the first time (labels and values in the month's column), and a values-only box for later months;\n   - a **Download CSV** button for everything (columns Tab, Category, Metric and the month).\n\n## What the figures mean\n\n- **DCDS rows are what was added that month** (records created in the month), like the tab's other monthly rows. Set `dcdsCounts` to `total` for all-time totals instead.\n- **#Downloads** is the change in Preservica's all-time download counter since last month. Postman remembers each month's all-time figure (`downloadsHistory`), so the first month is blank. To fill it anyway, put last month's all-time count in `previousDownloadsAllTime` and send request 6 again (clear it afterwards).\n- **TB are decimal** (10^12 bytes): 2 decimal places for the Storage tab, 4 on the Preservica tab. A file kept in two storage locations counts in both for Stored, Hot and Cold, and once for Content.\n- **Hot or Cold** comes from the storage location's name: names matching `coldPattern` (default `glacier|deep|cold|archive|tape|offline`) are Cold, so `S3 Deep Glacier Adapter` is Cold.\n- **Images, sound, moving images and text** come from each asset's Preservation format group (`pdf` counts as Text, `tiff` as Images and so on). The FormatGroups rows list every group found, so you can check the sorting.\n- **Integrity** rows come from each file's integrity check history. Set `integrityChecks` to `false` to skip them (one request fewer per file).\n- **Duplicates** are files whose SHA1 checksum also appears in another asset.\n\n## If something goes wrong\n\n- The yellow boxes on the report say what's missing and why. HTTP 401 or 403 means the account needs the **Access** functional role with **Read Metadata** and **Read Content**.\n- The report's **What the run found** table shows where data went missing, such as assets found but not measured, or assets without a created date or format group.\n- Send **7. Debug: show raw responses** on its own after a run. Its **Visualize** tab shows what the last run collected, and Preservica's raw answers to each kind of request: the top-level folders, both searches (with the fields returned), and one asset followed down to a file. Put a reference in `debugAsset` to follow a particular asset. It shows no password or token, so the page can be sent to whoever maintains the collection.\n",
+    "description": "# Monthly Preservica figures for the DCDS stats sheet\n\n*Version 2026-11-03c.* Request 7 (debug) shows the version too. If it shows an older one, or no version, you're running an old copy: delete the older copies of this collection in Postman.\n\nMeasures Preservica and shows the month's figures laid out like the **DCDS_stats** Google Sheet, with a CSV to download, so you can copy them into the sheet by hand. Nothing in Preservica is changed.\n\n**Before you start:** on this collection's **Variables** tab, fill in `username` and `password` in the **Current value** column (current values stay on your computer; initial values sync to Postman's servers), then click **Save**.\n\n## Each month\n\n1. Run it on the last day of the month or in the first five days of the next. In the first five days of a month it reports the month that just ended. To choose a month yourself, set `month` (e.g. `2026-10`).\n2. Click the collection's **⋯** menu > **Run collection**, keep every request ticked, and click **Run**. It makes several requests per asset, so a few hundred assets take a few minutes; the **Console** shows progress. You can also **Send** requests 1 to 6 one at a time: request 5 then measures up to 10 assets per send. Wait for each send to finish, and send it again until its **Visualize** tab says all assets are done (Postman keeps a request's results only when it finishes).\n3. Open **6. Show the monthly figures** and its **Visualize** tab. It shows:\n   - **DCDS tab: Preservica rows** (#Collections, #Assets, #Images, #SoundRecordings, #MovingImages, #Text, #Downloads), with a box of the seven values: copy it, click the month's cell in the #Collections row, and paste;\n   - **Storage tab: Tier 1** #TBPreservicaHot and #TBPreservicaCold, in TB;\n   - **Preservica tab:** about 45 detailed rows (category, metric, value): one box to paste at A3 the first time (labels and values in the month's column), and a values-only box for later months;\n   - a **Download CSV** button for everything (columns Tab, Category, Metric and the month).\n\n## What the figures mean\n\n- **DCDS rows are what was added that month** (records created in the month), like the tab's other monthly rows. Set `dcdsCounts` to `total` for all-time totals instead.\n- **#Downloads** is the change in Preservica's all-time download counter since last month. Postman remembers each month's all-time figure (`downloadsHistory`), so the first month is blank. To fill it anyway, put last month's all-time count in `previousDownloadsAllTime` and send request 6 again (clear it afterwards).\n- **TB are decimal** (10^12 bytes): 2 decimal places for the Storage tab, 4 on the Preservica tab. A file kept in two storage locations counts in both for Stored, Hot and Cold, and once for Content.\n- **Hot or Cold** comes from the storage location's name: names matching `coldPattern` (default `glacier|deep|cold|archive|tape|offline`) are Cold, so `S3 Deep Glacier Adapter` is Cold.\n- **Images, sound, moving images and text** come from each asset's Preservation format group (`pdf` counts as Text, `tiff` as Images and so on). The FormatGroups rows list every group found, so you can check the sorting.\n- **Integrity** rows come from each file's integrity check history. Set `integrityChecks` to `false` to skip them (one request fewer per file).\n- **Duplicates** are files whose SHA1 checksum also appears in another asset.\n\n## If something goes wrong\n\n- The yellow boxes on the report say what's missing and why. HTTP 401 or 403 means the account needs the **Access** functional role with **Read Metadata** and **Read Content**.\n- The report's **What the run found** table shows where data went missing, such as assets found but not measured, or assets without a created date or format group.\n- Send **7. Debug: show raw responses** on its own after a run. Its **Visualize** tab shows what the last run collected, and Preservica's raw answers to each kind of request: the top-level folders, both searches (with the fields returned), and one asset followed down to a file. Put a reference in `debugAsset` to follow a particular asset. It shows no password or token, so the page can be sent to whoever maintains the collection.\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -119,7 +120,11 @@
     },
     {
       "key": "secondsPerSend",
-      "value": "45"
+      "value": "30"
+    },
+    {
+      "key": "assetsPerSend",
+      "value": "10"
     },
     {
       "key": "measureStatus",
@@ -377,6 +382,7 @@
           "script": {
             "type": "text/javascript",
             "exec": [
+              "pm.collectionVariables.set('measureStatus', `${new Date().toLocaleString()}: request 5 started but didn't finish (stopped, timed out or interrupted).`);",
               "(async () => {",
               "// ---- helpers ------------------------------------------------------------",
               "const server = pm.collectionVariables.get('server');",
@@ -428,7 +434,8 @@
               "const from = new Date(y, m - 1, 1).getTime(), to = new Date(y, m, 1).getTime();",
               "const checkIntegrity = String(pm.collectionVariables.get('integrityChecks')).toLowerCase() !== 'false';",
               "const cold = new RegExp(pm.collectionVariables.get('coldPattern') || 'glacier|deep|cold|archive|tape|offline', 'i');",
-              "const budget = 1000 * Math.max(10, Number(pm.collectionVariables.get('secondsPerSend') || 45));",
+              "const budget = 1000 * Math.max(5, Number(pm.collectionVariables.get('secondsPerSend') || 30));",
+              "const perSend = Math.max(1, Number(pm.collectionVariables.get('assetsPerSend') || 10));",
               "const T = JSON.parse(pm.collectionVariables.get('totals') || '{}');",
               "const inc = (bucket, key, n = 1) => { T[bucket] = T[bucket] || {}; T[bucket][key] = (T[bucket][key] || 0) + n; };",
               "const kindOf = g => { g = (g || '').toLowerCase(); if (!g) return 'Other';",
@@ -515,14 +522,14 @@
               "}",
               "",
               "// ---- measure assets until all are done or this send's time is up ------",
-              "// One send measures as many assets as fit in secondsPerSend (default 45 seconds), so the",
+              "// One send measures up to assetsPerSend assets (default 10) within secondsPerSend (default 30), so the",
               "// collection works with Run collection and with Send alike. Postman keeps variable",
               "// changes only when a send's script finishes, so sends are kept short.",
               "const started = Date.now();",
               "let i = Number(pm.collectionVariables.get('assetIndex') || 0);",
               "const first = i;",
               "next(i < assets.length ? pm.info.requestName : REPORT);    // keeps the Runner looping even if this script ends early",
-              "while (i < assets.length && (i === first || Date.now() - started < budget)) {   // at least one asset per send",
+              "while (i < assets.length && (i === first || (i - first < perSend && Date.now() - started < budget))) {   // at least one asset per send",
               "    const [ref, created, top, secTag, searchGroup, downloads] = assets[i];",
               "    const added = created !== null && created >= from && created < to;",
               "    const files = {};",
@@ -560,7 +567,12 @@
               "<p><b>{{done}} of {{total}} assets measured</b> ({{now}} in this send).</p>",
               "{{#if finished}}<p>All done: send <b>6. Show the monthly figures</b>.</p>{{else}}<p>Not finished yet: <b>send this request again</b> to carry on, and keep sending it until this says all are done (about {{sends}} more). Wait for each send to finish before sending anything else. (In <b>Run collection</b> it carries on by itself.)</p>{{/if}}`,",
               "    { done: i, total: assets.length, now: i - first, finished: done, sends: Math.max(1, Math.ceil((assets.length - i) / Math.max(1, i - first))) });",
-              "})();"
+              "})().catch(e => {",
+              "    const msg = `${new Date().toLocaleString()}: request 5 stopped with a script error: ${e && e.message || e}`;",
+              "    pm.collectionVariables.set('measureStatus', msg);",
+              "    console.log(msg);",
+              "    pm.visualizer.set(`<p style=\"font-family:sans-serif;background:#fff3cd;padding:8px\">{{msg}}</p>`, { msg });",
+              "});"
             ]
           }
         }
@@ -569,7 +581,7 @@
         "method": "GET",
         "header": [],
         "url": "https://{{server}}/api/entity/versiondetails/version",
-        "description": "Measures every asset found by request 4: representations, content objects, every generation, each file's size, checksum, storage locations and integrity checks. One send measures as many assets as fit in `secondsPerSend` (default 45 seconds). In **Run collection** it carries on by itself. If you send requests one at a time, wait for each send to finish and send it again until its **Visualize** tab says all are done: Postman keeps a request's results only when it finishes, and progress carries over between sends."
+        "description": "Measures every asset found by request 4: representations, content objects, every generation, each file's size, checksum, storage locations and integrity checks. One send measures up to `assetsPerSend` assets (default 10) and stops after `secondsPerSend` (default 30 seconds), whichever comes first. In **Run collection** it carries on by itself. If you send requests one at a time, wait for each send to finish and send it again until its **Visualize** tab says all are done: Postman keeps a request's results only when it finishes, and progress carries over between sends."
       }
     },
     {
@@ -671,7 +683,7 @@
               "    ['Assets that stopped with an error', T.errors || 0],",
               "    ['Files measured', n('files')],",
               "];",
-              "if (assetList.length && !n('assets')) notes.push(`None of the ${assetList.length} assets have been measured: request 5 hasn't finished a send. Send 5. Measure the assets and wait for its answer (up to about a minute) before sending anything else, then repeat until its Visualize tab says all are done. Postman keeps a request's results only when it finishes.`);",
+              "if (assetList.length && !n('assets')) notes.push(`None of the ${assetList.length} assets have been measured: request 5 hasn't finished a send. Send 5. Measure the assets and wait for its answer (up to about 30 seconds) before sending anything else, then repeat until its Visualize tab says all are done. Postman keeps a request's results only when it finishes.`);",
               "else if (assetList.length && n('assets') < assetList.length) notes.push(`Only ${n('assets')} of the ${assetList.length} assets have been measured. Send 5. Measure the assets again until it says all are done (or use Run collection, which does that by itself), then send this request again.`);",
               "if (n('noFiles')) notes.push(`${n('noFiles')} asset(s) had no files found, so the storage figures leave them out. Send 7. Debug to see why (put one of their references from the Console in debugAsset).`);",
               "const requests = Object.entries(T.http || {}).sort().map(([k, c]) => ({ request: k.replace(/ HTTP .*/, ''), status: k.replace(/.* HTTP /, ''), count: c }));",
@@ -806,7 +818,8 @@
               "    folderCount: pm.collectionVariables.get('folderCount'), collectionsAdded: pm.collectionVariables.get('collectionsAdded'),",
               "    assetsFound: assets.length, assetsMeasured: pm.collectionVariables.get('assetIndex'),",
               "    lastMeasureSend: pm.collectionVariables.get('measureStatus') || '(request 5 has not finished a send since the last log-in)',",
-              "    secondsPerSend: pm.collectionVariables.get('secondsPerSend'), counters: T.s || {}, requests: T.http || {},",
+              "    secondsPerSend: pm.collectionVariables.get('secondsPerSend'), assetsPerSend: pm.collectionVariables.get('assetsPerSend'),",
+              "    collectionVersion: '2026-11-03c', counters: T.s || {}, requests: T.http || {},",
               "    errors: T.errors || 0, firstError: T.firstError || '', failedAssets: (T.failed || []).slice(0, 10) };",
               "console.log('Last run collected: ' + JSON.stringify(collected));",
               "const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');",
