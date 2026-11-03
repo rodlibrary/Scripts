@@ -1,0 +1,80 @@
+# Measures Preservica at the end of each month and writes the figures into the
+# DCDS stats Google Sheet (Preservica tab, Storage tab Tier 1 rows, DCDS tab
+# Preservica rows). Setup steps are in preservica/README.md.
+#
+# This repository is public, so the log shows no figures: only how many cells
+# were written and any problems.
+name: Preservica monthly stats
+
+on:
+  schedule:
+    # 03:17 UTC on the 1st = 10:17 pm (CDT) or 9:17 pm (CST) on the last day of
+    # the month in Iowa. GitHub can start schedules late; the script still
+    # files a run made before 6 am on the 1st under the month that just ended.
+    - cron: "17 3 1 * *"
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month to fill, e.g. 2026-10. Leave blank for the current month. (Figures are always measured as of now.)"
+        required: false
+        default: ""
+      dcds_counts:
+        description: "DCDS tab Preservica rows: added that month, or all-time totals"
+        type: choice
+        options: [added, total]
+        default: added
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preservica-monthly-stats
+  cancel-in-progress: false
+
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      PRESERVICA_USERNAME: ${{ secrets.PRESERVICA_USERNAME }}
+      PRESERVICA_PASSWORD: ${{ secrets.PRESERVICA_PASSWORD }}
+      PRESERVICA_TENANT: ${{ secrets.PRESERVICA_TENANT }}
+      PRESERVICA_SERVER: ${{ secrets.PRESERVICA_SERVER }}
+      GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID || vars.GOOGLE_SHEET_ID }}
+      DCDS_COUNTS: ${{ inputs.dcds_counts || vars.DCDS_COUNTS || 'added' }}
+      COLD_PATTERN: ${{ vars.COLD_PATTERN }}
+      MONTH: ${{ inputs.month }}
+
+    steps:
+      - name: Check secrets are set
+        run: |
+          missing=""
+          for name in PRESERVICA_USERNAME PRESERVICA_PASSWORD PRESERVICA_TENANT PRESERVICA_SERVER \
+                      GOOGLE_SERVICE_ACCOUNT_KEY GOOGLE_SHEET_ID; do
+            [ -z "${!name}" ] && missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Add these repository secrets (Settings > Secrets and variables > Actions):$missing"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install packages
+        run: python -m pip install pyPreservica requests google-auth
+
+      - name: Self-test (offline)
+        working-directory: preservica
+        run: python -m unittest discover -s tests
+
+      - name: Measure Preservica and fill the sheet
+        working-directory: preservica
+        run: |
+          args=()
+          [ -n "$MONTH" ] && args+=(--month "$MONTH")
+          python preservica_monthly_stats.py "${args[@]}"

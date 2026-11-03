@@ -1,6 +1,6 @@
 # Preservica
 
-Scripts, a scheduled GitHub export and Postman collections for reading, exporting and updating metadata, and reporting storage use, in Rod Library's Preservica repository (`us.preservica.com`, tenant `UNIOWA`).
+Scripts, scheduled GitHub jobs and Postman collections for reading, exporting and updating metadata, and reporting storage use and monthly statistics, in Rod Library's Preservica repository (`us.preservica.com`, tenant `UNIOWA`).
 
 ## Which tool to use
 
@@ -12,6 +12,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | Every metadata field of every asset under a folder, flattened into a CSV | [`preservica_metadata_export.py`](#preservica_metadata_exportpy) |
 | Look at, download or update one record's metadata | [`preservica_metadata_api.py`](#preservica_metadata_apipy), the [*read metadata* Postman collection](postman/), or Preservica's Swagger pages ([`API_GUIDE.md`](API_GUIDE.md)) |
 | See how much storage the content uses, split into hot and cold storage | The [*storage report* Postman collection](postman/) |
+| Monthly counts and storage figures in the DCDS stats Google Sheet | [Monthly stats on GitHub Actions](#preservica_monthly_statspy) |
 | Find out why a login fails | [`check_preservica_login.py`](#check_preservica_loginpy) |
 
 ## Files
@@ -22,6 +23,8 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | [`fields.txt`](fields.txt) | The fields `preservica_search_export.py` and the scheduled export include | – |
 | [`indexed_fields.csv`](indexed_fields.csv) | Every field Rod Library's Preservica indexes, i.e. every name you can put in `fields.txt` | – |
 | [`exports/preservica_metadata.csv`](exports/) | The latest scheduled export | Written by GitHub Actions |
+| [`preservica_monthly_stats.py`](preservica_monthly_stats.py) | Measures counts, storage (hot, cold, per location, per collection), formats, integrity checks and downloads, and writes them into the DCDS stats Google Sheet | Monthly on GitHub Actions, or any computer with Python 3 |
+| [`tests/`](tests/) | Offline tests for `preservica_monthly_stats.py` (a fake Preservica and a fake sheet) | `python -m unittest discover -s tests` |
 | [`preservica_metadata_export.py`](preservica_metadata_export.py) | Walks a folder and flattens every metadata document of every asset (MODS, Dublin Core, custom schemas) into CSV columns. Slower, but not limited to indexed fields. | Any computer with Python 3 |
 | [`preservica_metadata_api.py`](preservica_metadata_api.py) | Lists, downloads and updates one record's metadata through the Entity API | Any computer with Python 3 |
 | [`API_GUIDE.md`](API_GUIDE.md) | How to use Preservica's Swagger pages, and the requests for reading, downloading and updating metadata | – |
@@ -121,6 +124,87 @@ The workflow [`.github/workflows/preservica-metadata-export.yml`](../.github/wor
 **If a run finds no records**, it fails and leaves the previous CSV unchanged. The run summary shows how many records the account can see in total, how many are under the chosen folder, and how many match any `field = value` lines in `fields.txt`. `Records this account can see in total: 0` means the account needs Read Metadata (see [Before you start](#before-you-start)).
 
 **Change the schedule:** edit the `cron` line in the workflow file. GitHub uses UTC: `17 11 * * 1` means Mondays at 11:17 UTC. GitHub pauses schedules in public repositories after 60 days without activity and emails you; one click in the Actions tab turns it back on.
+
+## preservica_monthly_stats.py
+
+Measures Preservica on the last evening of each month and writes the figures into the **DCDS_stats** Google Sheet, in that month's column. The workflow [`.github/workflows/preservica-monthly-stats.yml`](../.github/workflows/preservica-monthly-stats.yml) runs it at 03:17 UTC on the 1st, which is 10:17 pm (9:17 pm in winter) on the last day of the month in Iowa.
+
+It fills three tabs:
+
+| Tab | Rows |
+|---|---|
+| **Preservica** | Every figure below, laid out like the other tabs (Category, Metric, January…December, Totals). The script builds the tab on its first run and adds rows when something new appears, such as a new collection, storage location or security tag. |
+| **Storage** | `Tier 1`: `#TBPreservicaHot` and `#TBPreservicaCold` |
+| **DCDS** | The `Preservica` rows: `#Collections`, `#Assets`, `#Images`, `#SoundRecordings`, `#MovingImages`, `#Text`, `#Downloads`. By default these are **what was added that month**, like the tab's other monthly rows, so its Totals column adds up to the year's additions. Set the variable `DCDS_COUNTS` to `total` for all-time totals instead. |
+
+On the Storage and DCDS tabs it only fills existing rows in the month's column; it never adds or moves rows there. If a row is missing, the log says which.
+
+**What's on the Preservica tab**
+
+| Category | Metrics |
+|---|---|
+| Content | `#Collections` (top-level folders), `#CollectionsAdded`, `#Folders`, `#Assets`, `#AssetsAdded`, `#Files` |
+| AssetsByKind / AssetsAddedByKind | `#Images`, `#SoundRecordings`, `#MovingImages`, `#Text`, `#Other`, all-time and added that month |
+| Storage | `#TBStored` (every copy in every location), `#TBHot`, `#TBCold`, `#TBContent` (each file once), `#TBAdded`, `#TBPreservation`, `#TBAccess`, `#TBCurrentGenerations`, `#TBOlderGenerations`, `#TBOriginalFiles`, `#TBMigratedFiles`, `#TBDuplicates`, `#DuplicateFiles` |
+| Tiers | Files kept only in Hot, only in Cold, in both, or with no storage location |
+| StorageLocations | Terabytes in each storage location, with its tier |
+| TBByCollection | Terabytes in each top-level folder |
+| SecurityTags | Assets per security tag |
+| FormatGroups | Assets per Preservica format group, and which kind each counts as |
+| Integrity | `#FilesCheckedThisMonth`, `#FilesFailedLastCheck`, `#FilesNeverChecked` |
+| Access | `#DownloadsAllTime` (Preservica's download counter) and `#Downloads` (the change since last month's all-time figure) |
+
+How the figures are worked out:
+
+- **Terabytes are decimal** (10¹² bytes), rounded to 4 places. The storage figures are measured the same way as the [storage report collection](postman/README.md#storage-report): each asset's representations, content objects, generations and files, and the storage locations holding each file. A file in two locations counts in both for `#TBStored`, `#TBHot` and `#TBCold`, and once for `#TBContent`.
+- **Hot or Cold** comes from the storage location's name: names matching `glacier|deep|cold|archive|tape|offline` are Cold (Rod Library's `S3 Deep Glacier Adapter`), everything else Hot. To change it, add a repository variable `COLD_PATTERN`.
+- **Kinds** come from each asset's Preservation format group: `image`, `tiff`, `jpeg`… are Images; `audio`, `wav`… Sound recordings; `video`, `mp4`… Moving images; `pdf`, `text`, `document`, `office`… Text; anything else Other. The FormatGroups rows show every group seen and its kind, so you can check the sorting.
+- **Added that month** uses each record's created date in Preservica (Central time).
+- **Duplicates** are files whose SHA1 checksum also appears in another asset; the extra copies are counted.
+- **Downloads:** `#Downloads` for a month is that month's all-time count minus the previous month's, so the first month (and January) is left blank.
+- **Totals** column on the Preservica tab: a sum for monthly rows (Added, Downloads, Checked) and the latest month's value for the rest. The Storage and DCDS tabs' Totals are left as they are.
+- Running it again for the same month overwrites that month's column, so a manual re-run is safe. Figures are always measured **as of the moment it runs**; `--month` only chooses the column.
+- It stops before measuring if the spreadsheet's title names a different year than the month (for example `DCDS_stats_2026` and January 2027): point `GOOGLE_SHEET_ID` at the new year's sheet.
+
+**Setup (one time)**
+
+1. **Create a Google service account and key.**
+   1. In the [Google Cloud console](https://console.cloud.google.com/), choose or create a project (for example `rod-library-stats`).
+   2. **APIs & Services > Library**: find **Google Sheets API** and click **Enable**.
+   3. **IAM & Admin > Service Accounts > Create service account**. Give it a name such as `preservica-stats`, click **Create and continue**, skip the optional role and user steps, and click **Done**. It needs no project roles.
+   4. Open the new service account, go to **Keys > Add key > Create new key**, choose **JSON**, and click **Create**. A `.json` file downloads. It's the account's password: keep it safe and never commit it (`key.json` is in `.gitignore`).
+   5. Copy the service account's e-mail address (`preservica-stats@<project>.iam.gserviceaccount.com`).
+
+   If creating the key is refused with *"Service account key creation is disabled"*, the university's Google Cloud organisation blocks keys (the policy `iam.disableServiceAccountKeyCreation`); ask the campus Google administrator for an exception for this project.
+2. **Share the spreadsheet with the service account.** Open the DCDS_stats sheet, click **Share**, paste the service account's e-mail address, choose **Editor**, untick *Notify people*, and click **Share**. Because the sheet is in a shared drive, you can instead add the address to the shared drive as a **Content manager**, which also covers next year's sheet.
+3. **Add the repository secrets.** In this repository, **Settings > Secrets and variables > Actions > Secrets > New repository secret**:
+
+   | Name | Value |
+   |---|---|
+   | `GOOGLE_SERVICE_ACCOUNT_KEY` | The whole contents of the downloaded `.json` file (open it in Notepad, select all, copy, paste) |
+   | `GOOGLE_SHEET_ID` | The long code in the sheet's address, between `/d/` and `/edit` |
+
+   The four `PRESERVICA_*` secrets from the [scheduled export](#scheduled-export-on-github-actions) are used as well.
+4. **Try it:** **Actions > Preservica monthly stats > Run workflow**. Leave *month* blank for the current month, or enter one such as `2026-10`. Then check the sheet.
+
+**This repository is public**, and so are the run logs. The script prints no figures, collection names or security tags in the log, only how many cells it wrote and any problems. The figures go only to the sheet.
+
+**Run it on your own computer**
+
+```powershell
+python -m pip install pyPreservica requests google-auth
+python preservica_monthly_stats.py --dry-run                                   # measure and print, write nothing
+python preservica_monthly_stats.py --sheet-id <ID> --google-key key.json --month 2026-10
+```
+
+It uses `credentials.properties` like the other scripts. Other options: `--dcds-counts total`, `--keep-existing` (fill only empty cells), `--no-integrity` (skip the integrity-check history, one fewer request per file), `--show` (print the figures), `--stats-json stats.json` (save them), `--workers` (assets measured at once, default 4). Run `python preservica_monthly_stats.py --help` for all of them.
+
+**If something goes wrong**
+
+- *Google Sheets refused access (HTTP 403)*: the sheet isn't shared with the service account's e-mail address, or the Sheets API isn't enabled in its project.
+- *The Storage tab has no row for…*: a row label was changed. The script looks for the category in column A (such as `Tier 1` or `Preservica`) and the metric under it in column B.
+- *Some Preservica requests were refused*: the service account needs the Access functional role with Read Metadata and Read Content (see [Before you start](#before-you-start)). The figures were still written, but may be too low.
+- A run takes about one request per asset step plus three per file; a few hundred assets take a few minutes. The job is allowed five hours.
 
 ## preservica_metadata_export.py
 
