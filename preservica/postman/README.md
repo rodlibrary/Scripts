@@ -51,7 +51,7 @@ Things to know:
 Run it once a month to get the figures for the **DCDS_stats** Google Sheet, then copy them in by hand.
 
 1. Run it on the last day of the month or in the first five days of the next: in the first five days it reports the month that just ended. To pick a month, set `month` (such as `2026-10`).
-2. **Run collection** with every request ticked. Like the storage report, it makes several requests per asset, so a few hundred assets take a few minutes.
+2. **Run collection** with every request ticked. Like the storage report, it makes several requests per asset, so a few hundred assets take a few minutes. Sending requests 1 to 6 one at a time also works: **5. Measure the assets** measures for up to 4 minutes per send (`secondsPerSend`), keeps its progress, and its **Visualize** tab says whether to send it again.
 3. Open **6. Show the monthly figures** and its **Visualize** tab:
    - **DCDS tab: Preservica rows.** Copy the box of seven values, click the month's cell in the `#Collections` row, and paste: they fill `#Collections` down to `#Downloads`.
    - **Storage tab: Tier 1.** `#TBPreservicaHot` and `#TBPreservicaCold`, in TB with 2 decimal places, in a box to paste the same way.
