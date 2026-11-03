@@ -1,6 +1,6 @@
 # Postman collections for Preservica
 
-Five collections for [Postman](https://www.postman.com/downloads/) that call Rod Library's Preservica (`us.preservica.com`, tenant `UNIOWA`). Each has step-by-step instructions in its **Overview** panel and a note on every request.
+Six collections for [Postman](https://www.postman.com/downloads/) that call Rod Library's Preservica (`us.preservica.com`, tenant `UNIOWA`). Each has step-by-step instructions in its **Overview** panel and a note on every request.
 
 | Collection | What it does | Changes records? |
 |---|---|---|
@@ -9,6 +9,7 @@ Five collections for [Postman](https://www.postman.com/downloads/) that call Rod
 | [`Preservica_selected_metadata_CSV`](Preservica_selected_metadata_CSV.postman_collection.json) | Chosen indexed fields for every asset in every top-level folder, as a CSV with a `top_level_folder` column | No |
 | [`Preservica_storage_report`](Preservica_storage_report.postman_collection.json) | Storage used, by tier (Hot, Cold), by storage location and by representation (Preservation, Access), with a CSV. Also lists Preservica's Analytics datasets. | No |
 | [`Preservica_monthly_stats`](Preservica_monthly_stats.postman_collection.json) | The month's figures for the DCDS_stats Google Sheet: the DCDS tab's Preservica rows, the Storage tab's Tier 1 rows (Hot and Cold TB) and detailed rows for the Preservica tab, with boxes to paste and a CSV | No |
+| [`Preservica_ARK_assets_CSV`](Preservica_ARK_assets_CSV.postman_collection.json) | Every asset whose MODS identifier holds an ARK, with its Preservica reference, the ARK, its n2t.net link and chosen fields, as a CSV. Lists ARKs found in more than one asset. | No |
 
 ## Import
 
@@ -23,7 +24,7 @@ When you import a newer version, choose **Replace**, then enter the username and
 
 ## Notes
 
-- All five log in by themselves: run *1. Log in* first, and later requests log in again when the 15-minute token is about to expire or is rejected.
+- All six log in by themselves: run *1. Log in* first, and later requests log in again when the 15-minute token is about to expire or is rejected.
 - The account sees only records it has **Read Metadata** permission for. An empty folder list or 0 results means the account needs that permission on the records' security tags.
 - The *download all metadata* collection also needs permission to export. A `403` when an export starts means the account lacks it.
 - The *selected metadata* collection keeps its results inside Postman. For tens of thousands of assets, [`preservica_search_export.py`](../preservica_search_export.py) or the scheduled GitHub export copes better.
@@ -67,3 +68,19 @@ Things to know:
 - `integrityChecks` set to `false` skips the integrity-check rows and one request per file.
 - The report's yellow boxes say what's missing and why. HTTP 401 or 403 means the service account needs the Access functional role with Read Metadata and Read Content.
 - **If the report shows little data,** look at its **What the run found** table first. It shows how many collections, folders and assets were found and measured, how many assets came with a created date, top-level folder, security tag, format group and download count, and how many had no files. Then send **7. Debug: show raw responses** on its own. Its **Visualize** tab shows what the last run collected and Preservica's raw answers: the top-level folders, both searches (with the fields Preservica returned) and one asset followed down to a file, its storage locations and integrity checks. Put a reference in `debugAsset` to follow a particular asset. The page shows no password or token, so it's safe to send on.
+
+## Assets with an ARK
+
+Lists every asset whose MODS identifier holds an ARK, as a CSV.
+
+1. On the **Variables** tab, set `fields` to the other fields you want, separated by commas: any names from [`indexed_fields.csv`](../indexed_fields.csv). The default is `xip.title,mods.title,mods.dateCreated,xip.security_descriptor`.
+2. **Run collection** with requests 1 to 4 ticked, then open **4. Show the CSV** > **Visualize** and click **Download CSV**.
+
+Columns: `preservica_reference` (the UUID), `preservica_ref` (`IO_<UUID>`, the form the ARK manifest in the Redirects repository uses), `record_type`, `ark` (`ark:/32498/…`; several separated by ` | `), `ark_url` (at `https://n2t.net`), `top_level_folder`, `mods.identifier (all values)`, then your `fields`.
+
+Things to know:
+
+- **Preservica's index keeps the values of MODS `<identifier>` but not its `type` attribute,** so the collection keeps the assets whose identifier contains an ARK: `ark:/32498/x7k9q`, `ark:32498/x7k9q` or a link such as `https://n2t.net/ark:/32498/x7k9q`. Assets with only other identifiers are counted on the report and left out.
+- `naan` (default `32498`, Rod Library's) limits it to ARKs under that NAAN; leave it blank for any. `recordTypes` set to `IO,SO` includes folders, and `folderRefs` limits it to some folders.
+- **ARKs found in more than one asset** are listed on the report, since a redirect needs exactly one target.
+- If the CSV is empty or an ARK is missing, send **5. Debug: show raw responses**. It shows how many records have a `mods.identifier`, how Preservica indexed a few of them, and one asset's MODS record (`debugAsset` picks which).
