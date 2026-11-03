@@ -1,0 +1,457 @@
+{
+  "info": {
+    "_postman_id": "3b9e7c21-5d4a-4f6e-8a2b-1c0d9e8f7a6b",
+    "name": "Preservica - assets with an ARK (CSV)",
+    "description": "# Assets with an ARK, as a CSV\n\nLists every asset whose MODS identifier holds an ARK, with its Preservica reference, the ARK, and the other fields you choose, as a CSV. Nothing in Preservica is changed.\n\n**Before you start:** on this collection's **Variables** tab:\n- fill in `username` and `password` in the **Current value** column (current values stay on your computer);\n- set `fields` to the other fields you want, separated by commas: any names from `indexed_fields.csv` in the Scripts repository (default `xip.title,mods.title,mods.dateCreated,xip.security_descriptor`);\n- click **Save**.\n\n## Steps\n\n1. Click the collection's **⋯** menu > **Run collection**, keep requests 1 to 4 ticked, and click **Run**. (Sending 1 to 4 one at a time also works; send 3 again until the Console says *Done*.)\n2. Open **4. Show the CSV** and its **Visualize** tab: the number of records found, a **Download CSV** button, the CSV in a box, and the first 200 rows as a table.\n\n## The columns\n\n| Column | What it holds |\n|---|---|\n| `preservica_reference` | The asset's reference (UUID) |\n| `preservica_ref` | The same with its type, e.g. `IO_55ff719d-…`, as used in the ARK manifest |\n| `record_type` | Asset (or Folder, if `recordTypes` includes `SO`) |\n| `ark` | The ARK(s), as `ark:/32498/…`; several are separated by ` \\| ` |\n| `ark_url` | The ARK at the resolver (`resolver`, default `https://n2t.net`) |\n| `top_level_folder` | The top-level folder the asset is in |\n| `mods.identifier (all values)` | Every MODS identifier of the asset, ARK or not |\n| then | Your `fields`, in order |\n\n## Settings\n\n- `naan`: only ARKs under this NAAN (default `32498`, Rod Library's). Leave blank for any NAAN.\n- `identifierField`: the indexed field holding the ARK (default `mods.identifier`).\n- `recordTypes`: `IO` for assets (default), `SO` for folders, `IO,SO` for both.\n- `folderRefs`: folder references, separated by commas, to cover only those folders.\n\n## How ARKs are found\n\nPreservica's index keeps the values of MODS `<identifier>` but not its `type` attribute, so the collection keeps the records whose identifier contains an ARK: `ark:/32498/x7k9q`, `ark:32498/x7k9q` or a link such as `https://n2t.net/ark:/32498/x7k9q`. Records with only other identifiers are counted and left out. ARKs that appear in more than one record are listed on the report.\n\n## If something goes wrong\n\nSend **5. Debug: show raw responses** on its own. It shows how many records have a `mods.identifier`, a few of their identifier values as Preservica indexed them, and the MODS record of one asset (`debugAsset` picks which), so you can see where the ARK is. It shows no password or token.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "Preservica-Access-Token",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{token}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "server",
+      "value": "us.preservica.com"
+    },
+    {
+      "key": "tenant",
+      "value": "UNIOWA"
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "fields",
+      "value": "xip.title,mods.title,mods.dateCreated,xip.security_descriptor"
+    },
+    {
+      "key": "naan",
+      "value": "32498"
+    },
+    {
+      "key": "resolver",
+      "value": "https://n2t.net"
+    },
+    {
+      "key": "identifierField",
+      "value": "mods.identifier"
+    },
+    {
+      "key": "recordTypes",
+      "value": "IO"
+    },
+    {
+      "key": "folderRefs",
+      "value": ""
+    },
+    {
+      "key": "debugAsset",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "tokenTime",
+      "value": "0"
+    },
+    {
+      "key": "start",
+      "value": "0"
+    },
+    {
+      "key": "rows",
+      "value": "[]"
+    },
+    {
+      "key": "stats",
+      "value": "{}"
+    },
+    {
+      "key": "folderNames",
+      "value": "{}"
+    },
+    {
+      "key": "topNextUrl",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Log in",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    pm.collectionVariables.set('token', pm.response.json().token);",
+              "    pm.collectionVariables.set('tokenTime', String(Date.now()));",
+              "    // A new run starts from scratch.",
+              "    pm.collectionVariables.set('start', '0'); pm.collectionVariables.set('rows', '[]');",
+              "    pm.collectionVariables.set('stats', '{}'); pm.collectionVariables.set('folderNames', '{}');",
+              "    pm.collectionVariables.set('topNextUrl', '');",
+              "    console.log('Logged in.');",
+              "} else {",
+              "    console.log('Login failed: ' + pm.response.text());",
+              "    (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(null) : postman.setNextRequest(null);",
+              "}",
+              "pm.test('Logged in', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "https://{{server}}/api/accesstoken/login",
+        "description": "Logs in and starts a fresh run.",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "username",
+              "value": "{{username}}",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{password}}",
+              "type": "text"
+            },
+            {
+              "key": "tenant",
+              "value": "{{tenant}}",
+              "type": "text"
+            }
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "2. List top-level folders",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const nextUrl = pm.collectionVariables.get('topNextUrl');",
+              "if (nextUrl) pm.request.url = nextUrl;"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "if (pm.response.code !== 200) { console.log(`Listing top-level folders failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300)); next(null); return; }",
+              "const text = pm.response.text();",
+              "const names = JSON.parse(pm.collectionVariables.get('folderNames') || '{}');",
+              "const attr = (tag, name) => { const m = tag.match(new RegExp(`\\\\b${name}=\"([^\"]*)\"`)); return m ? m[1] : ''; };",
+              "const unesc = s => s.replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');",
+              "for (const m of text.matchAll(/<(?:[\\w-]+:)?Child\\b([^>]*)>/g)) {",
+              "    if (attr(m[1], 'type') === 'SO') names[attr(m[1], 'ref')] = unesc(attr(m[1], 'title') || attr(m[1], 'ref'));",
+              "}",
+              "pm.collectionVariables.set('folderNames', JSON.stringify(names));",
+              "const more = (text.match(/<(?:[\\w-]+:)?Next>(https?:\\/\\/[^<]+)</) || [])[1];",
+              "if (more) { pm.collectionVariables.set('topNextUrl', more.replace(/&amp;/g, '&')); next(pm.info.requestName); return; }",
+              "pm.collectionVariables.set('topNextUrl', '');",
+              "console.log(`${Object.keys(names).length} top-level folder(s): ${Object.values(names).join('; ')}`);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/root/children?start=0&max=100",
+        "description": "Gets the top-level folders' names for the `top_level_folder` column."
+      }
+    },
+    {
+      "name": "3. Find records with an ARK",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const idField = (pm.collectionVariables.get('identifierField') || 'mods.identifier').trim();",
+              "const fields = (pm.collectionVariables.get('fields') || '').split(',').map(f => f.trim())",
+              "    .filter(f => f && !['xip.reference', 'xip.top_level_so', idField].includes(f));",
+              "const types = String(pm.collectionVariables.get('recordTypes') || 'IO').toUpperCase().includes('SO')",
+              "    ? (String(pm.collectionVariables.get('recordTypes')).toUpperCase().includes('IO') ? ['IO', 'SO'] : ['SO']) : ['IO'];",
+              "const folders = (pm.collectionVariables.get('folderRefs') || '').split(',').map(f => f.trim()).filter(f => f);",
+              "const filters = [{ name: 'xip.document_type', values: types },",
+              "                 { name: idField, values: ['*'] }];          // only records with an identifier",
+              "if (folders.length) filters.push({ name: 'xip.parent_hierarchy', values: folders });",
+              "['xip.top_level_so'].concat(fields).forEach(f => filters.push({ name: f, values: [] }));   // return these fields",
+              "const body = [ { key: 'start', value: String(pm.collectionVariables.get('start') || 0) }, { key: 'max', value: '100' },",
+              "               { key: 'q', value: JSON.stringify({ q: '*', fields: filters }) },   // '*', not '%': Preservica 9.4 returns nothing for '%'",
+              "               { key: 'metadata', value: 'xip.top_level_so' }, { key: 'metadata', value: idField } ];",
+              "fields.forEach(f => body.push({ key: 'metadata', value: f }));",
+              "pm.request.body.update({ mode: 'urlencoded', urlencoded: body });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const idField = (pm.collectionVariables.get('identifierField') || 'mods.identifier').trim();",
+              "const fields = (pm.collectionVariables.get('fields') || '').split(',').map(f => f.trim())",
+              "    .filter(f => f && !['xip.reference', 'xip.top_level_so', idField].includes(f));",
+              "const types = String(pm.collectionVariables.get('recordTypes') || 'IO').toUpperCase().includes('SO')",
+              "    ? (String(pm.collectionVariables.get('recordTypes')).toUpperCase().includes('IO') ? ['IO', 'SO'] : ['SO']) : ['IO'];",
+              "if (pm.response.code !== 200) { console.log(`Search failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 500)); next(null); return; }",
+              "const v = pm.response.json().value;",
+              "const naan = String(pm.collectionVariables.get('naan') || '').trim();",
+              "const resolver = String(pm.collectionVariables.get('resolver') || 'https://n2t.net').replace(/\\/+$/, '');",
+              "const list = x => x == null ? [] : (Array.isArray(x) ? x : [x]).map(String).filter(s => s !== '');",
+              "const text = x => list(x).join(' | ');",
+              "// Every ARK in a value: ark:/NAAN/name, ark:NAAN/name, or inside a URL such as https://n2t.net/ark:/NAAN/name.",
+              "const arksIn = values => {",
+              "    const out = [];",
+              "    for (const s of values) for (const m of s.matchAll(/ark:\\/?(\\d{5,})\\/([A-Za-z0-9=~*+@_$.\\-\\/]+)/g)) {",
+              "        if (naan && m[1] !== naan) continue;",
+              "        const ark = `ark:/${m[1]}/${m[2].replace(/[./]+$/, '')}`;",
+              "        if (!out.includes(ark)) out.push(ark);",
+              "    }",
+              "    return out;",
+              "};",
+              "const names = JSON.parse(pm.collectionVariables.get('folderNames') || '{}');",
+              "const rows = JSON.parse(pm.collectionVariables.get('rows') || '[]');",
+              "const stats = JSON.parse(pm.collectionVariables.get('stats') || '{}');",
+              "stats.total = v.totalHits || 0;",
+              "(v.metadata || []).forEach((rec, i) => {",
+              "    const oid = String((v.objectIds || [])[i] || '');",
+              "    const m = oid.match(/(IO|SO)\\|([0-9a-fA-F-]{36})/);",
+              "    if (!m) return;",
+              "    const f = {}; rec.forEach(x => f[x.name] = x.value);",
+              "    const ids = list(f[idField]);",
+              "    const arks = arksIn(ids);",
+              "    stats.withIdentifier = (stats.withIdentifier || 0) + 1;",
+              "    if (!arks.length) { stats.noArk = (stats.noArk || 0) + 1; return; }",
+              "    if (arks.length > 1) stats.multiple = (stats.multiple || 0) + 1;",
+              "    const top = text(f['xip.top_level_so']);",
+              "    rows.push([m[2], `${m[1]}_${m[2]}`, m[1] === 'IO' ? 'Asset' : 'Folder', arks.join(' | '),",
+              "               arks.map(a => `${resolver}/${a}`).join(' | '), names[top] || top, text(ids)].concat(fields.map(x => text(f[x]))));",
+              "});",
+              "pm.collectionVariables.set('rows', JSON.stringify(rows));",
+              "pm.collectionVariables.set('stats', JSON.stringify(stats));",
+              "const start = Number(pm.collectionVariables.get('start') || 0) + (v.objectIds || []).length;",
+              "pm.collectionVariables.set('start', String(start));",
+              "if ((v.objectIds || []).length && start < v.totalHits) {",
+              "    console.log(`Checked ${start} of ${v.totalHits} records with a ${idField}; ${rows.length} have an ARK so far.`);",
+              "    next(pm.info.requestName);   // repeat for the next page",
+              "    return;",
+              "}",
+              "pm.collectionVariables.set('start', '0');",
+              "console.log(`Done: ${v.totalHits} record(s) have a ${idField}; ${rows.length} of them have an ARK. Open 4. Show the CSV > Visualize.`);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "https://{{server}}/api/content/search",
+        "description": "Searches for records with a `mods.identifier`, 100 at a time, and keeps those whose identifier holds an ARK. In the Collection Runner it repeats until every page is in; when sending it by hand, send it again until the Console says *Done*.",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": []
+        }
+      }
+    },
+    {
+      "name": "4. Show the CSV",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const idField = (pm.collectionVariables.get('identifierField') || 'mods.identifier').trim();",
+              "const fields = (pm.collectionVariables.get('fields') || '').split(',').map(f => f.trim())",
+              "    .filter(f => f && !['xip.reference', 'xip.top_level_so', idField].includes(f));",
+              "const types = String(pm.collectionVariables.get('recordTypes') || 'IO').toUpperCase().includes('SO')",
+              "    ? (String(pm.collectionVariables.get('recordTypes')).toUpperCase().includes('IO') ? ['IO', 'SO'] : ['SO']) : ['IO'];",
+              "const rows = JSON.parse(pm.collectionVariables.get('rows') || '[]');",
+              "const stats = JSON.parse(pm.collectionVariables.get('stats') || '{}');",
+              "const header = ['preservica_reference', 'preservica_ref', 'record_type', 'ark', 'ark_url', 'top_level_folder', idField + ' (all values)'].concat(fields);",
+              "const esc = s => { s = String(s == null ? '' : s); return /[\",\\r\\n]/.test(s) ? '\"' + s.replace(/\"/g, '\"\"') + '\"' : s; };",
+              "const csv = [header].concat(rows).map(r => r.map(esc).join(',')).join('\\r\\n');",
+              "// The same ARK in more than one record needs a look before it's used for a redirect.",
+              "const byArk = {};",
+              "rows.forEach(r => r[3].split(' | ').forEach(a => (byArk[a] = byArk[a] || []).push(r[1])));",
+              "const shared = Object.entries(byArk).filter(([, refs]) => refs.length > 1).map(([ark, refs]) => ({ ark, refs: refs.join(', ') }));",
+              "const notes = [];",
+              "if (!stats.total && !rows.length) notes.push(`No records with a ${idField} were found. Run the whole collection (Run collection), and check that the account has Read Metadata on the records' security tags. Send 5. Debug to see Preservica's answer.`);",
+              "if (stats.noArk) notes.push(`${stats.noArk} record(s) have a ${idField} but no ARK in it, so they're left out. 5. Debug shows some of their identifiers.`);",
+              "if (shared.length) notes.push(`${shared.length} ARK(s) appear in more than one record (listed below).`);",
+              "console.log(`${rows.length} record(s) with an ARK, ${header.length} columns.` + (notes.length ? ' ' + notes.join(' ') : ''));",
+              "const template = `",
+              "<style>body{font-family:sans-serif;font-size:13px} table{border-collapse:collapse;margin:6px 0 14px} td,th{border:1px solid #ccc;padding:3px 6px;text-align:left;vertical-align:top;max-width:320px}",
+              "textarea{width:100%;height:150px;font-family:monospace;font-size:12px} button{font-size:14px;padding:4px 12px}",
+              ".box{background:#fff3cd;border:1px solid #e0c36c;padding:6px 8px;margin:4px 0}</style>",
+              "<p><b>{{count}} record(s) with an ARK</b> (of {{total}} with a {{idField}}), {{cols}} columns.",
+              "<button onclick=\"var b=new Blob(['\\\\ufeff'+document.getElementById('csv').value],{type:'text/csv'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='preservica_ark_assets.csv';document.body.appendChild(a);a.click();\">Download CSV</button></p>",
+              "{{#each notes}}<div class=box>{{this}}</div>{{/each}}",
+              "{{#if shared.length}}<h3>ARKs in more than one record</h3><table><tr><th>ARK</th><th>Records</th></tr>{{#each shared}}<tr><td>{{ark}}</td><td>{{refs}}</td></tr>{{/each}}</table>{{/if}}",
+              "<p>If the button doesn't download anything: click in the box, select all, copy, and paste into a new file saved with a .csv ending.</p>",
+              "<textarea id=\"csv\" readonly>{{csv}}</textarea>",
+              "<table><tr>{{#each header}}<th>{{this}}</th>{{/each}}</tr>",
+              "{{#each preview}}<tr>{{#each this}}<td>{{this}}</td>{{/each}}</tr>{{/each}}</table>",
+              "{{#if more}}<p>The table shows the first 200 rows; the CSV has all of them.</p>{{/if}}`;",
+              "pm.visualizer.set(template, { csv, count: rows.length, total: stats.total || 0, idField, cols: header.length, header, notes, shared,",
+              "    preview: rows.slice(0, 200), more: rows.length > 200 });",
+              "(pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(null) : postman.setNextRequest(null);   // 5 is for debugging only"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/versiondetails/version",
+        "description": "Open the **Visualize** tab: the count, **Download CSV**, the CSV in a box, ARKs found in more than one record, and the first 200 rows. `naan` and `resolver` apply while searching, so after changing them run requests 1 to 4 again."
+      }
+    },
+    {
+      "name": "5. Debug: show raw responses",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const idField = (pm.collectionVariables.get('identifierField') || 'mods.identifier').trim();",
+              "const fields = (pm.collectionVariables.get('fields') || '').split(',').map(f => f.trim())",
+              "    .filter(f => f && !['xip.reference', 'xip.top_level_so', idField].includes(f));",
+              "const types = String(pm.collectionVariables.get('recordTypes') || 'IO').toUpperCase().includes('SO')",
+              "    ? (String(pm.collectionVariables.get('recordTypes')).toUpperCase().includes('IO') ? ['IO', 'SO'] : ['SO']) : ['IO'];",
+              "// Shows Preservica's raw answers: the search for records with an identifier, and the",
+              "// MODS record of one asset, so you can see where its ARK is. Nothing is changed.",
+              "(async () => {",
+              "const server = pm.collectionVariables.get('server');",
+              "const send = (url, body) => new Promise((ok, fail) => {",
+              "    const r = { url, header: { 'Preservica-Access-Token': pm.collectionVariables.get('token') } };",
+              "    if (body) { r.method = 'POST'; r.body = { mode: 'urlencoded', urlencoded: body }; }",
+              "    pm.sendRequest(r, (e, res) => e ? fail(e) : ok(res));",
+              "});",
+              "const steps = [];",
+              "const show = (name, url, res, note) => {",
+              "    const body = res ? res.text() : '(no answer)';",
+              "    steps.push({ name, url: url.replace(/^https?:\\/\\/[^/]+/, ''), code: res ? res.code : 'error', body: body.slice(0, 5000), note });",
+              "    console.log(`${name}: HTTP ${res ? res.code : 'error'}\\n${body.slice(0, 1500)}`);",
+              "    return res && res.code === 200 ? body : '';",
+              "};",
+              "const searchUrl = `https://${server}/api/content/search`;",
+              "const q = (filters) => [{ key: 'start', value: '0' }, { key: 'max', value: '5' },",
+              "    { key: 'q', value: JSON.stringify({ q: '*', fields: filters.concat([{ name: idField, values: [] }, { name: 'xip.title', values: [] }]) }) },",
+              "    { key: 'metadata', value: idField }, { key: 'metadata', value: 'xip.title' }];",
+              "const withId = show(`1 records with a ${idField}`, searchUrl, await send(searchUrl, q([{ name: 'xip.document_type', values: types }, { name: idField, values: ['*'] }])),",
+              "    `totalHits is how many records have a ${idField}. Each result shows the identifier values Preservica indexed; an ARK should look like ark:/32498/...`);",
+              "const any = show('2 any assets (for comparison)', searchUrl, await send(searchUrl, q([{ name: 'xip.document_type', values: ['IO'] }])),",
+              "    'totalHits is every asset the account can see. If 1 found 0 but this finds assets, the identifiers aren\\'t in ' + idField + '.');",
+              "let ref = (pm.collectionVariables.get('debugAsset') || '').trim();",
+              "if (!ref) { try { ref = String(JSON.parse(withId || any).value.objectIds[0] || '').split('|').pop(); } catch (e) {} }",
+              "if (ref) {",
+              "    const xml = show('3 the asset', `https://${server}/api/entity/information-objects/${ref}`, await send(`https://${server}/api/entity/information-objects/${ref}`),",
+              "        `Asset ${ref}. Each <Fragment schema=\"...\"> is one metadata record; the MODS one is fetched next.`);",
+              "    const frag = [...xml.matchAll(/<(?:[\\w-]+:)?Fragment\\b[^>]*\\bschema=\"([^\"]+)\"[^>]*>([^<]+)</g)].find(m => /mods/i.test(m[1]));",
+              "    if (frag) show('4 its MODS record', frag[2].trim(), await send(frag[2].trim()), 'Look for <identifier type=\"ark\"> (or similar) inside <Content>.');",
+              "    else steps.push({ name: '4 no MODS record', url: '', code: '', body: '', note: 'This asset has no MODS record attached.' });",
+              "}",
+              "const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');",
+              "pm.visualizer.set(`<style>body{font-family:sans-serif;font-size:12px} pre{white-space:pre-wrap;word-break:break-all;background:#f6f6f6;padding:6px;border:1px solid #ddd}</style>",
+              "<p>Raw answers from Preservica. Copy this page to whoever maintains this collection; it contains no password or token.</p>` +",
+              "    steps.map(s => `<h3>${esc(s.name)}: HTTP ${esc(s.code)}</h3><div>${esc(s.url)}</div><div><i>${esc(s.note)}</i></div><pre>${esc(s.body)}</pre>`).join(''), {});",
+              "})();"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/versiondetails/version",
+        "description": "Send on its own when the CSV is empty or an ARK is missing. Shows the search for records with a `mods.identifier`, a search of all assets for comparison, and one asset's MODS record (`debugAsset` picks which). Nothing is changed; no password or token is shown."
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Logs in again automatically when the token is missing or over 12 minutes old.",
+          "if (pm.info.requestName.startsWith('1. Log in')) return;",
+          "const age = Date.now() - Number(pm.collectionVariables.get('tokenTime') || 0);",
+          "if (pm.collectionVariables.get('token') && age < 12 * 60 * 1000) return;",
+          "pm.sendRequest({",
+          "    url: `https://${pm.collectionVariables.get('server')}/api/accesstoken/login`,",
+          "    method: 'POST',",
+          "    body: { mode: 'urlencoded', urlencoded: [",
+          "        { key: 'username', value: pm.collectionVariables.get('username') },",
+          "        { key: 'password', value: pm.collectionVariables.get('password') },",
+          "        { key: 'tenant', value: pm.collectionVariables.get('tenant') } ] }",
+          "}, (err, res) => {",
+          "    if (!err && res.code === 200) {",
+          "        pm.collectionVariables.set('token', res.json().token);",
+          "        pm.collectionVariables.set('tokenTime', String(Date.now()));",
+          "        console.log('Logged in again (token refreshed).');",
+          "    } else {",
+          "        console.log('Automatic login failed: ' + (err || res.text()));",
+          "    }",
+          "});"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.response.code === 401 && !pm.info.requestName.startsWith('1. Log in')) {",
+          "    pm.collectionVariables.set('tokenTime', '0');",
+          "    console.log('The token was rejected (401). The next request will log in again first.');",
+          "}"
+        ]
+      }
+    }
+  ]
+}
