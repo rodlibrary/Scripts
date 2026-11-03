@@ -1,0 +1,727 @@
+{
+  "info": {
+    "name": "Preservica - monthly stats (for the DCDS sheet)",
+    "description": "# Monthly Preservica figures for the DCDS stats sheet\n\nMeasures Preservica and shows the month's figures laid out like the **DCDS_stats** Google Sheet, with a CSV to download, so you can copy them into the sheet by hand. Nothing in Preservica is changed.\n\n**Before you start:** on this collection's **Variables** tab, fill in `username` and `password` in the **Current value** column (current values stay on your computer; initial values sync to Postman's servers), then click **Save**.\n\n## Each month\n\n1. Run it on the last day of the month or in the first five days of the next. In the first five days of a month it reports the month that just ended. To choose a month yourself, set `month` (e.g. `2026-10`).\n2. Click the collection's **⋯** menu > **Run collection**, keep every request ticked, and click **Run**. It makes several requests per asset, so a few hundred assets take a few minutes; the **Console** shows progress.\n3. Open **6. Show the monthly figures** and its **Visualize** tab. It shows:\n   - **DCDS tab: Preservica rows** (#Collections, #Assets, #Images, #SoundRecordings, #MovingImages, #Text, #Downloads), with a box of the seven values: copy it, click the month's cell in the #Collections row, and paste;\n   - **Storage tab: Tier 1** #TBPreservicaHot and #TBPreservicaCold, in TB;\n   - **Preservica tab:** about 45 detailed rows (category, metric, value): one box to paste at A3 the first time (labels and values in the month's column), and a values-only box for later months;\n   - a **Download CSV** button for everything (columns Tab, Category, Metric and the month).\n\n## What the figures mean\n\n- **DCDS rows are what was added that month** (records created in the month), like the tab's other monthly rows. Set `dcdsCounts` to `total` for all-time totals instead.\n- **#Downloads** is the change in Preservica's all-time download counter since last month. Postman remembers each month's all-time figure (`downloadsHistory`), so the first month is blank. To fill it anyway, put last month's all-time count in `previousDownloadsAllTime` and send request 6 again (clear it afterwards).\n- **TB are decimal** (10^12 bytes): 2 decimal places for the Storage tab, 4 on the Preservica tab. A file kept in two storage locations counts in both for Stored, Hot and Cold, and once for Content.\n- **Hot or Cold** comes from the storage location's name: names matching `coldPattern` (default `glacier|deep|cold|archive|tape|offline`) are Cold, so `S3 Deep Glacier Adapter` is Cold.\n- **Images, sound, moving images and text** come from each asset's Preservation format group (`pdf` counts as Text, `tiff` as Images and so on). The FormatGroups rows list every group found, so you can check the sorting.\n- **Integrity** rows come from each file's integrity check history. Set `integrityChecks` to `false` to skip them (one request fewer per file).\n- **Duplicates** are files whose SHA1 checksum also appears in another asset.\n\n## If something goes wrong\n\n- The yellow boxes on the report say what's missing and why. HTTP 401 or 403 means the account needs the **Access** functional role with **Read Metadata** and **Read Content**.\n- If file sizes are missing, the *storage report* collection's request 6 (debug) shows one asset's raw responses.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "Preservica-Access-Token",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{token}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "server",
+      "value": "us.preservica.com"
+    },
+    {
+      "key": "tenant",
+      "value": "UNIOWA"
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "month",
+      "value": ""
+    },
+    {
+      "key": "dcdsCounts",
+      "value": "added"
+    },
+    {
+      "key": "coldPattern",
+      "value": "glacier|deep|cold|archive|tape|offline"
+    },
+    {
+      "key": "integrityChecks",
+      "value": "true"
+    },
+    {
+      "key": "previousDownloadsAllTime",
+      "value": ""
+    },
+    {
+      "key": "downloadsHistory",
+      "value": "{}"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "tokenTime",
+      "value": "0"
+    },
+    {
+      "key": "reportMonth",
+      "value": ""
+    },
+    {
+      "key": "collections",
+      "value": "{}"
+    },
+    {
+      "key": "topNextUrl",
+      "value": ""
+    },
+    {
+      "key": "folderCount",
+      "value": "0"
+    },
+    {
+      "key": "collectionsAdded",
+      "value": "0"
+    },
+    {
+      "key": "start",
+      "value": "0"
+    },
+    {
+      "key": "assets",
+      "value": "[]"
+    },
+    {
+      "key": "assetIndex",
+      "value": "0"
+    },
+    {
+      "key": "totals",
+      "value": "{}"
+    },
+    {
+      "key": "shownErrors",
+      "value": "0"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Log in",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    pm.collectionVariables.set('token', pm.response.json().token);",
+              "    pm.collectionVariables.set('tokenTime', String(Date.now()));",
+              "    // A new run starts from scratch, even if an earlier run was stopped part-way.",
+              "    pm.collectionVariables.set('start', '0'); pm.collectionVariables.set('assetIndex', '0');",
+              "    pm.collectionVariables.set('assets', '[]'); pm.collectionVariables.set('totals', '{}');",
+              "    pm.collectionVariables.set('collections', '{}'); pm.collectionVariables.set('topNextUrl', '');",
+              "    pm.collectionVariables.set('folderCount', '0'); pm.collectionVariables.set('collectionsAdded', '0');",
+              "    pm.collectionVariables.set('shownErrors', '0');",
+              "    // Which month: the month variable (e.g. 2026-10), or else this month. In the first",
+              "    // 5 days of a month the month that just ended is used, so a run on the 1st or 2nd",
+              "    // fills the right column.",
+              "    let y, m;",
+              "    const want = (pm.collectionVariables.get('month') || '').trim();",
+              "    const mm = want.match(/^(\\d{4})-(\\d{1,2})$/);",
+              "    if (mm) { y = +mm[1]; m = +mm[2]; }",
+              "    else {",
+              "        const now = new Date(); y = now.getFullYear(); m = now.getMonth() + 1;",
+              "        if (now.getDate() <= 5) { m -= 1; if (m === 0) { m = 12; y -= 1; } }",
+              "        if (want) console.log(`The month variable \"${want}\" isn't like 2026-10, so it was ignored.`);",
+              "    }",
+              "    pm.collectionVariables.set('reportMonth', `${y}-${String(m).padStart(2, '0')}`);",
+              "    const name = new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long' });",
+              "    console.log(`Logged in. Reporting ${name} ${y}. Later requests log in again by themselves when the token nears its 15-minute limit.`);",
+              "} else {",
+              "    console.log('Login failed: ' + pm.response.text());",
+              "    (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(null) : postman.setNextRequest(null);",
+              "}",
+              "pm.test('Logged in', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "https://{{server}}/api/accesstoken/login",
+        "description": "Logs in, starts a fresh run, and decides which month is being reported (see the `month` variable).",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "username",
+              "value": "{{username}}",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{password}}",
+              "type": "text"
+            },
+            {
+              "key": "tenant",
+              "value": "{{tenant}}",
+              "type": "text"
+            }
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "2. List the collections (top-level folders)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const nextUrl = pm.collectionVariables.get('topNextUrl');",
+              "if (nextUrl) pm.request.url = nextUrl;"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "if (pm.response.code !== 200) { console.log(`Listing top-level folders failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300)); next(null); return; }",
+              "const text = pm.response.text();",
+              "const cols = JSON.parse(pm.collectionVariables.get('collections') || '{}');",
+              "const attr = (tag, name) => { const m = tag.match(new RegExp(`\\\\b${name}=\"([^\"]*)\"`)); return m ? m[1] : ''; };",
+              "const unesc = s => s.replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');",
+              "for (const m of text.matchAll(/<(?:[\\w-]+:)?Child\\b([^>]*)>/g)) {",
+              "    if (attr(m[1], 'type') === 'SO') cols[attr(m[1], 'ref')] = unesc(attr(m[1], 'title') || attr(m[1], 'ref'));",
+              "}",
+              "pm.collectionVariables.set('collections', JSON.stringify(cols));",
+              "const more = (text.match(/<(?:[\\w-]+:)?Next>(https?:\\/\\/[^<]+)</) || [])[1];",
+              "if (more) { pm.collectionVariables.set('topNextUrl', more.replace(/&amp;/g, '&')); next(pm.info.requestName); return; }",
+              "pm.collectionVariables.set('topNextUrl', '');",
+              "console.log(`${Object.keys(cols).length} collection(s) (top-level folders).`);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/root/children?start=0&max=100",
+        "description": "Lists the top-level folders, which count as collections, following `<Next>` for more than 100."
+      }
+    },
+    {
+      "name": "3. Count folders",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const fields = [\"xip.created\"];",
+              "const filters = [{ name: 'xip.document_type', values: ['SO'] }].concat(fields.map(f => ({ name: f, values: [] })));",
+              "const body = [ { key: 'start', value: String(pm.collectionVariables.get('start') || 0) }, { key: 'max', value: '500' },",
+              "               { key: 'q', value: JSON.stringify({ q: '*', fields: filters }) } ];   // '*', not '%': Preservica 9.4 returns nothing for '%'",
+              "fields.forEach(f => body.push({ key: 'metadata', value: f }));",
+              "pm.request.body.update({ mode: 'urlencoded', urlencoded: body });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const monthWindow = () => { const [y, m] = pm.collectionVariables.get('reportMonth').split('-').map(Number); return [new Date(y, m - 1, 1).getTime(), new Date(y, m, 1).getTime()]; };",
+              "const first = v => Array.isArray(v) ? (v[0] == null ? '' : String(v[0])) : (v == null ? '' : String(v));",
+              "const when = v => { const s = first(v).trim(); if (!s) return null; if (/^\\d{11,14}$/.test(s)) return Number(s); const t = Date.parse(s); return isNaN(t) ? null : t; };",
+              "if (pm.response.code !== 200) { console.log(`Folder search failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300)); next(null); return; }",
+              "const v = pm.response.json().value;",
+              "const cols = JSON.parse(pm.collectionVariables.get('collections') || '{}');",
+              "const [from, to] = monthWindow();",
+              "let added = Number(pm.collectionVariables.get('collectionsAdded') || 0);",
+              "(v.metadata || []).forEach((rec, i) => {",
+              "    const ref = String((v.objectIds || [])[i] || '').split('|').pop();",
+              "    const f = {}; rec.forEach(x => f[x.name] = x.value);",
+              "    const t = when(f['xip.created']);",
+              "    if (cols[ref] !== undefined && t !== null && t >= from && t < to) added += 1;",
+              "});",
+              "pm.collectionVariables.set('collectionsAdded', String(added));",
+              "const start = Number(pm.collectionVariables.get('start') || 0) + (v.objectIds || []).length;",
+              "pm.collectionVariables.set('folderCount', String(v.totalHits || 0));",
+              "if ((v.objectIds || []).length && start < v.totalHits) { pm.collectionVariables.set('start', String(start)); next(pm.info.requestName); return; }",
+              "pm.collectionVariables.set('start', '0');",
+              "console.log(`${v.totalHits || 0} folder(s); ${added} collection(s) created this month.`);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "https://{{server}}/api/content/search",
+        "description": "Counts all folders and the collections created this month (search, `xip.document_type` SO).",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": []
+        }
+      }
+    },
+    {
+      "name": "4. Find the assets",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.collectionVariables.get('start') === '0') pm.collectionVariables.set('assets', '[]');",
+              "const fields = [\"xip.created\", \"xip.top_level_so\", \"xip.security_descriptor\", \"xip.format_group_r_Preservation\", \"system_and_public_analytics.downloadcount\"];",
+              "const filters = [{ name: 'xip.document_type', values: ['IO'] }].concat(fields.map(f => ({ name: f, values: [] })));",
+              "const body = [ { key: 'start', value: String(pm.collectionVariables.get('start') || 0) }, { key: 'max', value: '500' },",
+              "               { key: 'q', value: JSON.stringify({ q: '*', fields: filters }) } ];   // '*', not '%': Preservica 9.4 returns nothing for '%'",
+              "fields.forEach(f => body.push({ key: 'metadata', value: f }));",
+              "pm.request.body.update({ mode: 'urlencoded', urlencoded: body });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const monthWindow = () => { const [y, m] = pm.collectionVariables.get('reportMonth').split('-').map(Number); return [new Date(y, m - 1, 1).getTime(), new Date(y, m, 1).getTime()]; };",
+              "const first = v => Array.isArray(v) ? (v[0] == null ? '' : String(v[0])) : (v == null ? '' : String(v));",
+              "const when = v => { const s = first(v).trim(); if (!s) return null; if (/^\\d{11,14}$/.test(s)) return Number(s); const t = Date.parse(s); return isNaN(t) ? null : t; };",
+              "if (pm.response.code !== 200) { console.log(`Asset search failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300)); next(null); return; }",
+              "const v = pm.response.json().value;",
+              "const assets = JSON.parse(pm.collectionVariables.get('assets') || '[]');",
+              "(v.metadata || []).forEach((rec, i) => {",
+              "    const ref = String((v.objectIds || [])[i] || '').split('|').pop();",
+              "    const f = {}; rec.forEach(x => f[x.name] = x.value);",
+              "    const dl = f['system_and_public_analytics.downloadcount'];",
+              "    const downloads = dl == null || dl === '' || (Array.isArray(dl) && !dl.length) ? null",
+              "        : [].concat(dl).reduce((n, x) => n + (Number(String(x).replace(/,/g, '')) || 0), 0);",
+              "    // [reference, created (ms), top-level folder, security tag, format group, downloads]",
+              "    assets.push([ref, when(f['xip.created']), first(f['xip.top_level_so']), first(f['xip.security_descriptor']),",
+              "                 first(f['xip.format_group_r_Preservation']), downloads]);",
+              "});",
+              "pm.collectionVariables.set('assets', JSON.stringify(assets));",
+              "const start = Number(pm.collectionVariables.get('start') || 0) + (v.objectIds || []).length;",
+              "if ((v.objectIds || []).length && start < v.totalHits) { pm.collectionVariables.set('start', String(start)); next(pm.info.requestName); return; }",
+              "pm.collectionVariables.set('start', '0'); pm.collectionVariables.set('assetIndex', '0');",
+              "console.log(`${assets.length} asset(s) to measure. Measuring them now: several requests per asset, so this takes a few minutes.`);",
+              "if (!assets.length) next('6. Show the monthly figures');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "https://{{server}}/api/content/search",
+        "description": "Finds every asset with its created date, collection, security tag, format group and download count, 500 at a time.",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": []
+        }
+      }
+    },
+    {
+      "name": "5. Measure the next asset",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const assets = JSON.parse(pm.collectionVariables.get('assets') || '[]');",
+              "const i = Number(pm.collectionVariables.get('assetIndex') || 0);",
+              "const a = assets[Math.min(i, Math.max(assets.length - 1, 0))];",
+              "pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/information-objects/${a ? a[0] : 'none'}/representations`;"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "(async () => {",
+              "// ---- helpers ------------------------------------------------------------",
+              "const server = pm.collectionVariables.get('server');",
+              "const call = (url, opts = {}) => new Promise((resolve, reject) => {",
+              "    const r = { url, header: { 'Preservica-Access-Token': pm.collectionVariables.get('token') } };",
+              "    if (opts.method) r.method = opts.method;",
+              "    if (opts.body) r.body = opts.body;",
+              "    pm.sendRequest(r, (err, res) => err ? reject(err) : resolve(res));",
+              "});",
+              "const http = {};   // \"step HTTP code\" -> count, for this asset",
+              "const step = url => /integrity-check-history/.test(url) ? 'integrity checks' : /storage-locations$/.test(url) ? 'storage-locations'",
+              "    : /\\/bitstreams\\/\\d+$/.test(url) ? 'file' : /\\/generations\\/\\d+$/.test(url) ? 'generation'",
+              "    : /\\/generations$/.test(url) ? 'generations' : /\\/representations\\//.test(url) ? 'representation' : 'other';",
+              "async function get(url) {",
+              "    const res = await getRaw(url);",
+              "    const k = `${step(url)} HTTP ${res ? res.code : 'error'}`; http[k] = (http[k] || 0) + 1;",
+              "    if (res && res.code !== 200 && step(url) !== 'integrity checks') {",
+              "        const shown = Number(pm.collectionVariables.get('shownErrors') || 0);",
+              "        if (shown < 5) { console.log(`HTTP ${res.code} for ${url.replace(/^https?:\\/\\/[^/]+/, '')}: ${res.text().slice(0, 200)}`); pm.collectionVariables.set('shownErrors', String(shown + 1)); }",
+              "    }",
+              "    return res;",
+              "}",
+              "async function getRaw(url) {",
+              "    for (let attempt = 1; attempt <= 4; attempt++) {",
+              "        let res;",
+              "        try { res = await call(url); } catch (e) { if (attempt === 4) throw e; continue; }",
+              "        if (res.code === 401 && attempt < 4) { await relogin(); continue; }",
+              "        if ([429, 500, 502, 503, 504].includes(res.code) && attempt < 3) { await new Promise(r => setTimeout(r, 1000 * attempt)); continue; }",
+              "        return res;",
+              "    }",
+              "}",
+              "async function relogin() {",
+              "    const res = await call(`https://${server}/api/accesstoken/login`, { method: 'POST', body: { mode: 'urlencoded', urlencoded: [",
+              "        { key: 'username', value: pm.collectionVariables.get('username') },",
+              "        { key: 'password', value: pm.collectionVariables.get('password') },",
+              "        { key: 'tenant', value: pm.collectionVariables.get('tenant') } ] } });",
+              "    if (res.code === 200) { pm.collectionVariables.set('token', res.json().token); pm.collectionVariables.set('tokenTime', String(Date.now())); }",
+              "}",
+              "const tag = (name) => `(?:[\\\\w-]+:)?${name}`;   // matches <Name> and <ns:Name>",
+              "const all = (text, re) => [...text.matchAll(re)].map(m => m[1].trim());",
+              "const one = (text, name) => (text.match(new RegExp(`<${tag(name)}\\\\b[^>]*>([^<]*)</`)) || [])[1];",
+              "const uuid = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;",
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const REPORT = '6. Show the monthly figures';",
+              "",
+              "// ---- this asset --------------------------------------------------------",
+              "const assets = JSON.parse(pm.collectionVariables.get('assets') || '[]');",
+              "const i = Number(pm.collectionVariables.get('assetIndex') || 0);",
+              "if (i >= assets.length) { next(REPORT); return; }",
+              "const [ref, created, top, secTag, searchGroup, downloads] = assets[i];",
+              "const [y, m] = pm.collectionVariables.get('reportMonth').split('-').map(Number);",
+              "const from = new Date(y, m - 1, 1).getTime(), to = new Date(y, m, 1).getTime();",
+              "const added = created !== null && created >= from && created < to;",
+              "const checkIntegrity = String(pm.collectionVariables.get('integrityChecks')).toLowerCase() !== 'false';",
+              "const T = JSON.parse(pm.collectionVariables.get('totals') || '{}');",
+              "const inc = (bucket, key, n = 1) => { T[bucket] = T[bucket] || {}; T[bucket][key] = (T[bucket][key] || 0) + n; };",
+              "const files = {};       // bitstream URL -> { reps:Set, active, original }",
+              "let preservationGroup = '';",
+              "",
+              "async function measure() {",
+              "    if (pm.response.code !== 200) throw new Error(`representations: HTTP ${pm.response.code}` + ([401, 403].includes(pm.response.code) ? ' (the account may lack a role or permission for this record)' : ''));",
+              "    http[`representations HTTP 200`] = 1;",
+              "    const repLinks = [...pm.response.text().matchAll(new RegExp(`<${tag('Representation')}\\\\b([^>]*)>(https?://[^<]+)</`, 'g'))]",
+              "        .map(x => ({ type: (x[1].match(/type=\"([^\"]+)\"/) || [])[1] || 'Unknown', url: x[2].trim() }));",
+              "    const coReps = {};",
+              "    for (const rep of repLinks) {",
+              "        const res = await get(rep.url);",
+              "        if (!res || res.code !== 200) continue;",
+              "        for (const t of all(res.text(), new RegExp(`<${tag('ContentObject')}\\\\b[^>]*>([^<]+)</`, 'g'))) {",
+              "            const u = (t.match(uuid) || [])[0];",
+              "            if (u) (coReps[u] = coReps[u] || new Set()).add(rep.type);",
+              "        }",
+              "    }",
+              "    for (const [co, reps] of Object.entries(coReps)) {",
+              "        const gres = await get(`https://${server}/api/entity/content-objects/${co}/generations`);",
+              "        if (!gres || gres.code !== 200) continue;",
+              "        for (const genUrl of all(gres.text(), new RegExp(`<${tag('Generation')}\\\\b[^>]*>(https?://[^<]+)</`, 'g'))) {",
+              "            const res = await get(genUrl);",
+              "            if (!res || res.code !== 200) continue;",
+              "            const genXml = res.text();",
+              "            const head = (genXml.match(new RegExp(`<${tag('Generation')}\\\\b[^>]*>`)) || [''])[0];",
+              "            const active = !/\\bactive=\"false\"/.test(head), original = !/\\boriginal=\"false\"/.test(head);",
+              "            const group = (one(genXml, 'FormatGroup') || '').trim();",
+              "            if (active && reps.has('Preservation') && group && !preservationGroup) preservationGroup = group;",
+              "            for (const bs of all(genXml, new RegExp(`<${tag('Bitstream')}\\\\b[^>]*>(https?://[^<]+)</`, 'g'))) {",
+              "                const f = files[bs] = files[bs] || { reps: new Set(), active, original };",
+              "                reps.forEach(r => f.reps.add(r));",
+              "            }",
+              "        }",
+              "    }",
+              "    const shaSeen = new Set();",
+              "    for (const [bs, f] of Object.entries(files)) {",
+              "        const bres = await get(bs);",
+              "        const bxml = bres && bres.code === 200 ? bres.text() : '';",
+              "        const bytes = Number(one(bxml, 'FileSize') || 0);",
+              "        let sha = '';",
+              "        for (const fx of bxml.matchAll(new RegExp(`<${tag('Fixity')}\\\\b[^>]*>([\\\\s\\\\S]*?)</${tag('Fixity')}>`, 'g'))) {",
+              "            const alg = (one(fx[1], 'FixityAlgorithmRef') || '').toUpperCase().replace('-', ''), val = (one(fx[1], 'FixityValue') || '').trim().toLowerCase();",
+              "            if (val && (!sha || alg === 'SHA1')) sha = `${alg}:${val}`;",
+              "        }",
+              "        const lres = await get(`${bs}/storage-locations`);",
+              "        const block = lres && lres.code === 200 ? lres.text() : '';",
+              "        const adapters = [...new Set(all(block, new RegExp(`<${tag('Adapter')}\\\\b[^>]*\\\\bname=\"([^\"]+)\"`, 'g')))];",
+              "        // ---- add up --------------------------------------------------------",
+              "        inc('s', 'files'); inc('s', 'content', bytes);",
+              "        if (added) inc('s', 'addedBytes', bytes);",
+              "        inc('byCollection', top || '(not in a collection)', bytes);",
+              "        f.reps.forEach(r => inc('byRep', r, bytes));",
+              "        inc('s', f.active ? 'current' : 'older', bytes);",
+              "        inc('s', f.original ? 'original' : 'migrated', bytes);",
+              "        const cold = new RegExp(pm.collectionVariables.get('coldPattern') || 'glacier|deep|cold|archive|tape|offline', 'i');",
+              "        const tiers = new Set();",
+              "        adapters.forEach(ad => { const t = cold.test(ad) ? 'cold' : 'hot'; tiers.add(t); inc('byLocation', ad, bytes); inc('s', t, bytes); inc('s', 'stored', bytes); });",
+              "        inc('s', tiers.size === 2 ? 'filesBoth' : tiers.has('cold') ? 'filesColdOnly' : tiers.has('hot') ? 'filesHotOnly' : 'filesNowhere');",
+              "        if (sha && !shaSeen.has(sha)) {",
+              "            shaSeen.add(sha);",
+              "            T.sha = T.sha || {};",
+              "            const d = T.sha[sha] = T.sha[sha] || [0, bytes];",
+              "            d[0] += 1;     // number of assets holding this checksum",
+              "        }",
+              "        if (checkIntegrity) {",
+              "            const hres = await get(`${bs}/integrity-check-history?start=0&max=10`);",
+              "            if (hres && hres.code === 200) {",
+              "                let last = null;",
+              "                for (const h of hres.text().matchAll(new RegExp(`<${tag('IntegrityCheckHistory')}\\\\b[^>]*>([\\\\s\\\\S]*?)</${tag('IntegrityCheckHistory')}>`, 'g'))) {",
+              "                    const t = Date.parse(one(h[1], 'Date') || '');",
+              "                    if (!isNaN(t) && (!last || t > last.t)) last = { t, ok: /^true$/i.test((one(h[1], 'Success') || '').trim()) };",
+              "                }",
+              "                if (!last) inc('s', 'neverChecked');",
+              "                else { if (last.t >= from) inc('s', 'checked'); if (!last.ok) inc('s', 'failed'); }",
+              "            }",
+              "        }",
+              "    }",
+              "}",
+              "",
+              "// Name the next request before measuring, so the Runner keeps looping even if it",
+              "// finishes this script early.",
+              "next(i + 1 < assets.length ? pm.info.requestName : REPORT);",
+              "try {",
+              "    await measure();",
+              "    if (!Object.keys(files).length) console.log(`Asset ${ref}: no files found; requests: ${JSON.stringify(http)}`);",
+              "} catch (e) {",
+              "    T.errors = (T.errors || 0) + 1;",
+              "    (T.failed = T.failed || []).push(ref);",
+              "    if (!T.firstError) T.firstError = `${e.message || e}`;",
+              "    console.log(`Asset ${ref}: ${e.message || e}. Counted, but its files weren't measured; moving on.`);",
+              "}",
+              "// Counts from the search, for every asset.",
+              "const kindOf = g => { g = (g || '').toLowerCase(); if (!g) return 'Other';",
+              "    for (const [k, re] of [['Images', /image|raster|photo|tif|jpe?g|jp2|png|gif|bmp|dng|raw/], ['SoundRecordings', /audio|sound|wav|mp3|flac|aiff?/],",
+              "        ['MovingImages', /video|moving|film|mp4|mov|avi|mkv|mxf|mpeg/], ['Text', /pdf|text|txt|document|doc|word|office|epub|html?|xml|rtf|odt|book|presentation|spreadsheet/]])",
+              "        if (re.test(g)) return k;",
+              "    return 'Other'; };",
+              "const group = searchGroup || preservationGroup;",
+              "inc('s', 'assets'); inc('kinds', kindOf(group)); inc('byGroup', (group || '(none)').toLowerCase()); inc('byTag', secTag || '(none)');",
+              "if (created !== null) inc('s', 'createdKnown');",
+              "if (added) { inc('s', 'assetsAdded'); inc('kindsAdded', kindOf(group)); }",
+              "if (downloads !== null) { inc('s', 'downloads', downloads); inc('s', 'downloadsSeen'); }",
+              "T.http = T.http || {};",
+              "Object.entries(http).forEach(([k, n]) => T.http[k] = (T.http[k] || 0) + n);",
+              "pm.collectionVariables.set('totals', JSON.stringify(T));",
+              "pm.collectionVariables.set('assetIndex', String(i + 1));",
+              "if ((i + 1) % 10 === 0 || i + 1 === assets.length) console.log(`Measured ${i + 1} of ${assets.length} assets.`);",
+              "next(i + 1 < assets.length ? pm.info.requestName : REPORT);",
+              "})();"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/information-objects/representations",
+        "description": "In the Collection Runner this repeats once per asset: representations, content objects, every generation, each file's size, checksum, storage locations and integrity checks."
+      }
+    },
+    {
+      "name": "6. Show the monthly figures",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const T = JSON.parse(pm.collectionVariables.get('totals') || '{}');",
+              "const s = T.s || {};",
+              "const n = k => s[k] || 0;",
+              "const tb = b => Math.round((b || 0) / 1e10) / 100;        // decimal TB, 2 places like the Storage tab",
+              "const tb4 = b => Math.round((b || 0) / 1e8) / 10000;      // 4 places, for the detailed rows",
+              "const cols = JSON.parse(pm.collectionVariables.get('collections') || '{}');",
+              "const month = pm.collectionVariables.get('reportMonth') || '';",
+              "const [y, mo] = month.split('-').map(Number);",
+              "const monthName = y ? new Date(y, mo - 1, 1).toLocaleString('en-US', { month: 'long' }) : '';",
+              "const prevKey = mo === 1 ? '' : `${y}-${String(mo - 1).padStart(2, '0')}`;",
+              "const cold = new RegExp(pm.collectionVariables.get('coldPattern') || 'glacier|deep|cold|archive|tape|offline', 'i');",
+              "const addedOk = n('createdKnown') > 0;",
+              "const A = v => addedOk ? v : '';",
+              "",
+              "// Downloads: Preservica's counter is all-time, so the month is the change since last month.",
+              "const history = JSON.parse(pm.collectionVariables.get('downloadsHistory') || '{}');",
+              "const allTime = n('downloadsSeen') ? n('downloads') : null;",
+              "const override = String(pm.collectionVariables.get('previousDownloadsAllTime') || '').replace(/,/g, '').trim();",
+              "const prev = override !== '' ? Number(override) : (prevKey && history[prevKey] != null ? history[prevKey] : null);",
+              "const monthDownloads = allTime !== null && prev !== null && allTime >= prev ? allTime - prev : '';",
+              "if (allTime !== null && month) { history[month] = allTime; pm.collectionVariables.set('downloadsHistory', JSON.stringify(history)); }",
+              "",
+              "let dup = 0, dupBytes = 0;",
+              "Object.values(T.sha || {}).forEach(([count, bytes]) => { if (count > 1) { dup += count - 1; dupBytes += bytes * (count - 1); } });",
+              "const kinds = T.kinds || {}, kindsAdded = T.kindsAdded || {};",
+              "const total = String(pm.collectionVariables.get('dcdsCounts') || 'added').toLowerCase() === 'total';",
+              "const collectionsAdded = Number(pm.collectionVariables.get('collectionsAdded') || 0);",
+              "",
+              "const dcds = [",
+              "    ['#Collections', total ? Object.keys(cols).length : A(collectionsAdded)],",
+              "    ['#Assets', total ? n('assets') : A(n('assetsAdded'))],",
+              "    ['#Images', total ? (kinds.Images || 0) : A(kindsAdded.Images || 0)],",
+              "    ['#SoundRecordings', total ? (kinds.SoundRecordings || 0) : A(kindsAdded.SoundRecordings || 0)],",
+              "    ['#MovingImages', total ? (kinds.MovingImages || 0) : A(kindsAdded.MovingImages || 0)],",
+              "    ['#Text', total ? (kinds.Text || 0) : A(kindsAdded.Text || 0)],",
+              "    ['#Downloads', monthDownloads],",
+              "];",
+              "const storage = [['#TBPreservicaHot', tb(n('hot'))], ['#TBPreservicaCold', tb(n('cold'))]];",
+              "",
+              "const P = [];   // [category, metric, value]",
+              "const add = (c, m, v) => P.push([c, m, v]);",
+              "add('Content', '#Collections', Object.keys(cols).length); add('', '#CollectionsAdded', A(collectionsAdded));",
+              "add('', '#Folders', Number(pm.collectionVariables.get('folderCount') || 0));",
+              "add('', '#Assets', n('assets')); add('', '#AssetsAdded', A(n('assetsAdded'))); add('', '#Files', n('files'));",
+              "const K = ['Images', 'SoundRecordings', 'MovingImages', 'Text', 'Other'];",
+              "K.forEach((k, j) => add(j ? '' : 'AssetsByKind', '#' + k, kinds[k] || 0));",
+              "K.forEach((k, j) => add(j ? '' : 'AssetsAddedByKind', `#${k}Added`, A(kindsAdded[k] || 0)));",
+              "[['#TBStored', 'stored'], ['#TBHot', 'hot'], ['#TBCold', 'cold'], ['#TBContent', 'content'], ['#TBAdded', 'addedBytes'],",
+              " ['#TBCurrentGenerations', 'current'], ['#TBOlderGenerations', 'older'], ['#TBOriginalFiles', 'original'], ['#TBMigratedFiles', 'migrated']]",
+              "    .forEach(([label, key], j) => add(j ? '' : 'Storage', label, label === '#TBAdded' ? A(tb4(n(key))) : tb4(n(key))));",
+              "add('', '#TBPreservation', tb4((T.byRep || {}).Preservation)); add('', '#TBAccess', tb4((T.byRep || {}).Access));",
+              "add('', '#TBDuplicates', tb4(dupBytes)); add('', '#DuplicateFiles', dup);",
+              "add('Tiers', '#FilesHotOnly', n('filesHotOnly')); add('', '#FilesColdOnly', n('filesColdOnly'));",
+              "add('', '#FilesHotAndCold', n('filesBoth')); add('', '#FilesNoStorageLocation', n('filesNowhere'));",
+              "Object.keys(T.byLocation || {}).sort().forEach((l, j) => add(j ? '' : 'StorageLocations', `#TB ${l} (${cold.test(l) ? 'Cold' : 'Hot'})`, tb4(T.byLocation[l])));",
+              "Object.entries(T.byCollection || {}).map(([ref, b]) => [cols[ref] || ref, b]).sort((p, q) => p[0].localeCompare(q[0]))",
+              "    .forEach(([t, b], j) => add(j ? '' : 'TBByCollection', `#TB ${t}`, tb4(b)));",
+              "Object.keys(T.byTag || {}).sort().forEach((t, j) => add(j ? '' : 'SecurityTags', `#Assets ${t}`, T.byTag[t]));",
+              "Object.keys(T.byGroup || {}).sort().forEach((g, j) => add(j ? '' : 'FormatGroups', `#Assets ${g}`, T.byGroup[g]));",
+              "if (String(pm.collectionVariables.get('integrityChecks')).toLowerCase() !== 'false') {",
+              "    add('Integrity', '#FilesCheckedThisMonth', n('checked')); add('', '#FilesFailedLastCheck', n('failed')); add('', '#FilesNeverChecked', n('neverChecked'));",
+              "}",
+              "add('Access', '#DownloadsAllTime', allTime === null ? '' : allTime); add('', '#Downloads', monthDownloads);",
+              "",
+              "// CSV in the sheet's layout: tab, category, metric, value for the month.",
+              "const q = v => { v = v === null || v === undefined ? '' : String(v); return /[\",\\r\\n]/.test(v) ? '\"' + v.replace(/\"/g, '\"\"') + '\"' : v; };",
+              "const head = `Tab,Category,Metric,${monthName} ${y}`;",
+              "const lines = [head].concat(",
+              "    dcds.map(([m, v], j) => ['DCDS', j ? '' : 'Preservica', m, v].map(q).join(',')),",
+              "    storage.map(([m, v], j) => ['Storage', j ? '' : 'Tier 1', m, v].map(q).join(',')),",
+              "    P.map(([c, m, v]) => ['Preservica', c, m, v].map(q).join(',')));",
+              "const csv = lines.join('\\r\\n');",
+              "const column = rows => rows.map(r => r[r.length - 1] === '' ? '' : String(r[r.length - 1])).join('\\n');",
+              "",
+              "const requests = Object.entries(T.http || {}).sort().map(([k, c]) => ({ request: k.replace(/ HTTP .*/, ''), status: k.replace(/.* HTTP /, ''), count: c }));",
+              "const refused = requests.filter(r => r.status !== '200' && r.request !== 'integrity checks');",
+              "const notes = [];",
+              "if (!n('assets')) notes.push('No assets were measured. Run the whole collection (Run collection), and check in the Console that request 5 found assets.');",
+              "if (refused.length) notes.push(`Preservica refused ${refused.map(r => `${r.count} \"${r.request}\" request(s) with HTTP ${r.status}`).join(', ')}, so some figures may be too low. ` +",
+              "    (refused.some(r => ['401', '403'].includes(r.status)) ? 'HTTP 401 or 403: the account needs the Access functional role with Read Metadata and Read Content.' : ''));",
+              "if (T.errors) notes.push(`${T.errors} asset(s) couldn't be measured (listed in the Console): \"${T.firstError}\".`);",
+              "if (n('assets') && !addedOk) notes.push('No asset had a readable created date, so the \"added\" figures are blank.');",
+              "if (allTime === null) notes.push('Preservica returned no download counts, so the downloads rows are blank.');",
+              "else if (monthDownloads === '') notes.push(`#Downloads is blank because there's no all-time figure for the previous month yet. This run saved ${allTime} as ${monthName}'s, so next month's run can work it out. To fill it now, put last month's all-time figure in the previousDownloadsAllTime variable and send this request again.`);",
+              "if (!total) notes.push('The DCDS figures are what was added this month. Set dcdsCounts to total for all-time totals.');",
+              "console.log(`${monthName} ${y}: ${n('assets')} assets, Hot ${tb(n('hot'))} TB, Cold ${tb(n('cold'))} TB.` + (notes.length ? ' ' + notes.join(' ') : ''));",
+              "",
+              "const template = `",
+              "<style>body{font-family:sans-serif;font-size:13px} table{border-collapse:collapse;margin:4px 0 14px} td,th{border:1px solid #ccc;padding:3px 8px;text-align:left}",
+              "td.n{text-align:right} h3{margin:16px 0 4px} textarea{font-family:monospace;font-size:12px} button{font-size:14px;padding:4px 12px}",
+              ".box{background:#fff3cd;border:1px solid #e0c36c;padding:6px 8px;margin:4px 0}</style>",
+              "<h2>Preservica, {{monthName}} {{year}}</h2>",
+              "<p>{{assets}} assets measured. Figures are as of this run; \"added\" means created in {{monthName}}.",
+              "<button onclick=\"var b=new Blob(['\\\\ufeff'+document.getElementById('csv').value],{type:'text/csv'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='preservica_stats_{{month}}.csv';document.body.appendChild(a);a.click();\">Download CSV</button></p>",
+              "{{#each notes}}<div class=box>{{this}}</div>{{/each}}",
+              "<h3>DCDS tab: Preservica rows</h3>",
+              "<table><tr><th>Metric</th><th>{{monthName}}</th></tr>{{#each dcds}}<tr><td>{{this.[0]}}</td><td class=n>{{this.[1]}}</td></tr>{{/each}}</table>",
+              "<p>To paste: copy this box, click the {{monthName}} cell of the #Collections row, and paste.</p><textarea rows=7 cols=20 readonly>{{dcdsColumn}}</textarea>",
+              "<h3>Storage tab: Tier 1</h3>",
+              "<table><tr><th>Metric</th><th>{{monthName}} (TB)</th></tr>{{#each storage}}<tr><td>{{this.[0]}}</td><td class=n>{{this.[1]}}</td></tr>{{/each}}</table>",
+              "<textarea rows=2 cols=20 readonly>{{storageColumn}}</textarea>",
+              "<h3>Preservica tab</h3>",
+              "<table><tr><th>Category</th><th>Metric</th><th>{{monthName}}</th></tr>{{#each preservica}}<tr><td>{{this.[0]}}</td><td>{{this.[1]}}</td><td class=n>{{this.[2]}}</td></tr>{{/each}}</table>",
+              "<p><b>First time</b> (empty Preservica tab): copy this box and paste it at cell A3. It fills in the category and metric labels and puts the values in the {{monthName}} column.</p>",
+              "<textarea rows=6 cols=80 readonly>{{preservicaTsv}}</textarea>",
+              "<p><b>Later months:</b> if the labels still line up with the tab's rows, copy this box, click the {{monthName}} cell of the Content #Collections row, and paste.</p>",
+              "<textarea rows=6 cols=20 readonly>{{preservicaColumn}}</textarea>",
+              "<h3>Requests to Preservica</h3><table><tr><th>Request</th><th>Answer (HTTP)</th><th>Count</th></tr>{{#each requests}}<tr><td>{{request}}</td><td>{{status}}</td><td class=n>{{count}}</td></tr>{{/each}}</table>",
+              "<p>CSV (if the button doesn't download anything, copy this into a file ending in .csv):</p><textarea rows=6 cols=80 readonly>{{csv}}</textarea>",
+              "<textarea id=csv style=display:none>{{csv}}</textarea>`;",
+              "pm.visualizer.set(template, { monthName, year: y, month, assets: n('assets'), notes, dcds, storage, preservica: P, requests, csv,",
+              "    dcdsColumn: column(dcds), storageColumn: column(storage),",
+              "    preservicaTsv: P.map(([c, m, v]) => [c, m].concat(Array(Math.max(mo - 1, 0)).fill(''), [v === null || v === undefined ? '' : String(v)]).join('\\t')).join('\\n'),",
+              "    preservicaColumn: column(P) });",
+              "(pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(null) : postman.setNextRequest(null);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/versiondetails/version",
+        "description": "Open the response's **Visualize** tab: the DCDS, Storage and Preservica figures for the month, boxes to paste, and **Download CSV**. Send it again after changing `dcdsCounts`, `coldPattern` or `previousDownloadsAllTime`; nothing needs measuring again."
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Logs in again automatically when the token is missing or over 12 minutes old.",
+          "if (pm.info.requestName.startsWith('1. Log in')) return;",
+          "const age = Date.now() - Number(pm.collectionVariables.get('tokenTime') || 0);",
+          "if (pm.collectionVariables.get('token') && age < 12 * 60 * 1000) return;",
+          "pm.sendRequest({",
+          "    url: `https://${pm.collectionVariables.get('server')}/api/accesstoken/login`,",
+          "    method: 'POST',",
+          "    body: { mode: 'urlencoded', urlencoded: [",
+          "        { key: 'username', value: pm.collectionVariables.get('username') },",
+          "        { key: 'password', value: pm.collectionVariables.get('password') },",
+          "        { key: 'tenant', value: pm.collectionVariables.get('tenant') } ] }",
+          "}, (err, res) => {",
+          "    if (!err && res.code === 200) {",
+          "        pm.collectionVariables.set('token', res.json().token);",
+          "        pm.collectionVariables.set('tokenTime', String(Date.now()));",
+          "        console.log('Logged in again (token refreshed).');",
+          "    } else {",
+          "        console.log('Automatic login failed: ' + (err || res.text()));",
+          "    }",
+          "});"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.response.code >= 500) {",
+          "    console.log(`Preservica returned ${pm.response.code} for ${pm.request.method} ${pm.request.url.toString()}. Response: ` + pm.response.text().slice(0, 300));",
+          "}",
+          "if (pm.response.code === 401 && !pm.info.requestName.startsWith('1. Log in')) {",
+          "    pm.collectionVariables.set('tokenTime', '0');",
+          "    console.log('The token was rejected (401). The next request will log in again first.');",
+          "}"
+        ]
+      }
+    }
+  ]
+}
