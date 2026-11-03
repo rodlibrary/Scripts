@@ -1,6 +1,6 @@
 # Preservica
 
-Scripts, a scheduled GitHub export and Postman collections for reading, exporting and updating metadata in Rod Library's Preservica repository (`us.preservica.com`, tenant `UNIOWA`).
+Scripts, a scheduled GitHub export and Postman collections for reading, exporting and updating metadata, and reporting storage use, in Rod Library's Preservica repository (`us.preservica.com`, tenant `UNIOWA`).
 
 ## Which tool to use
 
@@ -11,6 +11,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | Every metadata field of every asset, as XML | The [*download all metadata* Postman collection](postman/) (one ZIP per top-level folder) |
 | Every metadata field of every asset under a folder, flattened into a CSV | [`preservica_metadata_export.py`](#preservica_metadata_exportpy) |
 | Look at, download or update one record's metadata | [`preservica_metadata_api.py`](#preservica_metadata_apipy), the [*read metadata* Postman collection](postman/), or Preservica's Swagger pages ([`API_GUIDE.md`](API_GUIDE.md)) |
+| See how much storage the content uses, split into hot and cold storage | The [*storage report* Postman collection](postman/) |
 | Find out why a login fails | [`check_preservica_login.py`](#check_preservica_loginpy) |
 
 ## Files
@@ -24,7 +25,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | [`preservica_metadata_export.py`](preservica_metadata_export.py) | Walks a folder and flattens every metadata document of every asset (MODS, Dublin Core, custom schemas) into CSV columns. Slower, but not limited to indexed fields. | Any computer with Python 3 |
 | [`preservica_metadata_api.py`](preservica_metadata_api.py) | Lists, downloads and updates one record's metadata through the Entity API | Any computer with Python 3 |
 | [`API_GUIDE.md`](API_GUIDE.md) | How to use Preservica's Swagger pages, and the requests for reading, downloading and updating metadata | – |
-| [`postman/`](postman/) | Three ready-made Postman collections: read one record, download all metadata, selected metadata to CSV | Postman |
+| [`postman/`](postman/) | Four ready-made Postman collections: read one record, download all metadata, selected metadata to CSV, storage report (hot and cold) | Postman |
 | [`check_preservica_login.py`](check_preservica_login.py) | Checks the credentials file and shows exactly why a login fails | Any computer with Python 3 |
 | [`preservica_search_test.py`](preservica_search_test.py) | Tries the search several ways and shows what each returns, to find out why an export finds 0 records when the account can open them | Any computer with Python 3 |
 | [`credentials.properties.example`](credentials.properties.example) | Template for the login file the Python scripts read | – |
@@ -36,6 +37,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 **Service Account.** The scripts and collections log in using a Preservica service account and see only what that account can see. Use the service account. It needs:
 
 - a Preservica password of its own (a university single sign-on login can't be used by the API);
+- the **Access** functional role, with **Read Metadata** and **Read Content** in it. Without the role, Preservica can refuse the requests for each record's files, which the storage report needs;
 - **Read Metadata** on the security tags of the records you want. An administrator sets this per tag in Preservica's `sdb/security.html` page. *Read Content* alone isn't enough: without Read Metadata, searches return nothing and records look empty;
 - the permission to edit metadata, only if you'll use the update commands, and the export permission for the *download all metadata* collection.
 
@@ -147,11 +149,12 @@ Add `--folder` when the reference is a folder. `update` replaces the whole metad
 
 ## Postman collections
 
-[`postman/`](postman/) has three collections that make the same requests from Postman, with step-by-step instructions built in:
+[`postman/`](postman/) has four collections that make the same requests from Postman, with step-by-step instructions built in:
 
 - **Read metadata:** look at one folder or asset and download its metadata records.
 - **Download all metadata (export packages):** exports every top-level folder as a ZIP of XML files, with all the metadata of every asset.
 - **Selected metadata for all assets (CSV):** chosen indexed fields for every asset in every top-level folder, with a column naming each asset's top-level folder.
+- **Storage report (hot and cold):** how much storage the content uses, by tier (Hot, Cold), by storage location (such as `S3 Deep Glacier Adapter`) and by representation, with a CSV. Preservica has no single "storage used" request, so it measures each asset's files and where they are stored.
 
 See [`postman/README.md`](postman/README.md) for importing them.
 
