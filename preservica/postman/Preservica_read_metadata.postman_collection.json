@@ -157,7 +157,7 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "const frags = [...pm.response.text().matchAll(/<Fragment schema=\"([^\"]+)\">([^<]+)<\\/Fragment>/g)];",
+              "const frags = [...pm.response.text().matchAll(/<(?:[\\w-]+:)?Fragment\\b[^>]*\\bschema=\"([^\"]+)\"[^>]*>([^<]+)</g)];",
               "frags.forEach(f => console.log(f[1] + '  ->  ' + f[2]));",
               "if (frags.length) {",
               "    pm.collectionVariables.set('fragmentUrl', frags[0][2].trim());",
