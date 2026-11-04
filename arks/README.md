@@ -6,6 +6,7 @@ Mint Archival Resource Keys (ARKs), publish them to the GitLab resolver reposito
 |---|---|---|
 | [`generate_arks.py`](generate_arks.py) | Mints ARKs from a CSV, then adds them to `resolve.csv` and the master list, pulling and pushing the GitLab copies | Any computer with Python 3 (no extra packages) |
 | [`match_preservica.py`](match_preservica.py) | Reads the ARK fields of every Preservica asset's MODS record and fills in each ARK's `preservica_ref` (and a `target_url` where none is set) in `resolve.csv` | Weekly on GitHub Actions, or any computer with Python 3 |
+| [`check_gitlab.py`](check_gitlab.py) | Tests the GitLab connection step by step, including a test push to a temporary branch, without touching `main` | Any computer with Python 3 |
 | [`arks.csv`](arks.csv) | Blank input template (header row only) | – |
 | [`tests/`](tests/) | Offline tests with a fake GitLab and a fake Preservica | `python3 -m unittest discover -s arks/tests` |
 
@@ -145,8 +146,8 @@ The log shows only counts, since this repository is public. The per-asset report
 
 ## Setup (one time)
 
-1. **GitLab token.** In [rod-library/resolver](https://git.uni.edu/rod-library/resolver), go to **Settings > Access tokens** and create a project access token with the **Developer** role and the **api** scope. Copy it.
-2. **On your computer:** `export GITLAB_TOKEN=...` before running the scripts, as above. Never put the token in a file in this repository.
+1. **GitLab token.** In [rod-library/resolver](https://git.uni.edu/rod-library/resolver), go to **Settings > Access tokens** and create a project access token with the **Maintainer** role and the **api** scope. Copy it. GitLab protects `main` by default so that only Maintainers can push to it. To use a **Developer** token instead, set **Allowed to push and merge** for `main` to *Developers + Maintainers* in **Settings > Repository > Protected branches**.
+2. **On your computer:** set the token before running the scripts: `export GITLAB_TOKEN=...` on a Mac, or `$env:GITLAB_TOKEN = "..."` in PowerShell. Never put the token in a file in this repository. Then run `python3 check_gitlab.py` (see [Test the GitLab connection](#test-the-gitlab-connection)).
 3. **In GitHub:** in this repository, go to **Settings > Secrets and variables > Actions > Secrets** and add a repository secret `GITLAB_TOKEN` with the token. The workflow also uses the `PRESERVICA_USERNAME`, `PRESERVICA_PASSWORD`, `PRESERVICA_TENANT` and `PRESERVICA_SERVER` secrets that the [scheduled Preservica export](../preservica/README.md#scheduled-export-on-github-actions) already uses. The Preservica account needs Read Metadata on the assets' security tags.
 4. **Moving from rod-library/redirects:** copy that repository's `redirects.csv` into the resolver repository as `resolve.csv`, along with `ark_master_list.csv`. Then point Apache at `resolve.csv`.
 5. Optional repository **variables** (same page, **Variables** tab):
@@ -155,9 +156,30 @@ The log shows only counts, since this repository is public. The per-asset report
 
 **If the workflow says GitHub can't reach git.uni.edu,** the GitLab server only accepts connections from campus. Run `match_preservica.py --from-gitlab --push-to-gitlab` on a campus computer instead, or use `generate_arks.py ... --push-to-gitlab --match-preservica`, which does it as part of minting.
 
+## Test the GitLab connection
+
+Before pushing anything for real, check that the ARK scripts can pull from and push to GitLab from this computer:
+
+```bash
+export GITLAB_TOKEN=glpat-your_token_here      # PowerShell: $env:GITLAB_TOKEN = "glpat-your_token_here"
+python3 check_gitlab.py
+```
+
+It checks each step and stops at the first problem, saying what to change:
+
+1. git.uni.edu can be reached from this computer (off campus, connect to the VPN);
+2. the token is accepted;
+3. the token can see `rod-library/resolver`, and with which role;
+4. the `main` branch exists and the token is allowed to push to it;
+5. `resolve.csv` and `ark_master_list.csv` can be read (and their names are right);
+6. a real push works. It creates a temporary branch, pushes a small test file to it exactly as the scripts push `resolve.csv`, and deletes the branch again. `main` is never written to.
+
+`--no-write` skips step 6. `--gitlab-project` and `--gitlab-branch` work as in the other scripts. `check_gitlab.py` needs `generate_arks.py` in the same folder.
+
 ## If something goes wrong
 
-- **`Couldn't pull ... from GitLab, so nothing was minted`:** the token is missing or wrong, or GitLab can't be reached. Check `GITLAB_TOKEN` and `--gitlab-project`.
+- **`Couldn't pull ... from GitLab, so nothing was minted`:** the token is missing or wrong, or GitLab can't be reached. Run `check_gitlab.py`.
+- **`push failed (403)`:** the token isn't allowed to push to `main`. Give it the Maintainer role, or allow Developers to push to `main` (see [Setup](#setup-one-time)).
 - **`ARK not in resolve.csv`** in the report: the ARK in the MODS has a typo, or was minted somewhere else. Compare it with `ark_master_list.csv`.
 - **`resolve.csv already has IO_...`:** the ARK was matched to a different asset before. Check both assets; run with `--overwrite` if the new one is right.
 - **`ARK found in 2 assets`:** the same ARK was entered in two assets' MODS. Remove it from the wrong one.
