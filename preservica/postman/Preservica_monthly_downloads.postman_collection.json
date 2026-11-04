@@ -1,0 +1,506 @@
+{
+  "info": {
+    "_postman_id": "8d2f4a6c-1e3b-4c5d-9f7a-2b4c6d8e0f13",
+    "name": "Preservica - monthly downloads",
+    "description": "# Monthly Preservica downloads\n\n*Version 2026-11-04a.* Counts the month's downloads for the DCDS stats sheet (DCDS tab, Preservica **#Downloads**). Nothing in Preservica is changed.\n\nPreservica doesn't document a single \"downloads\" figure, so the collection looks in both places it can keep one, and shows what it finds:\n\n1. **The download counter**: the `system_and_public_analytics.downloadcount` field on each asset. It's an all-time count, so the month's downloads are the change since last month's total. Postman remembers each month's total (`downloadsHistory`), so the first month only records the total; to work out that month anyway, put the previous month's total in `previousDownloadsAllTime`.\n2. **The event log** for the month (`/api/entity/events`): every event, counted by type. Event types whose names match `downloadEventPattern` (default `download|export|deliver|dissemin`) count as downloads. The report lists every event type found, so you can see which one is downloads and adjust the pattern.\n\nThe DCDS figure uses the download events if the month has any, otherwise the change in the counter. The report says which.\n\n**Before you start:** on this collection's **Variables** tab, fill in `username` and `password` in the **Current value** column, and click **Save**.\n\n## Each month\n\n1. Run it on the last day of the month or in the first five days of the next (then it reports the month that just ended); or set `month`, such as `2026-10`.\n2. **Run collection** with requests 1 to 4 ticked. (Sending them one at a time works too: send 2 and 3 again until their Console messages say they're done.)\n3. Open **4. Show the downloads** > **Visualize**: the #Downloads figure for the DCDS sheet, both sources in detail, the most-downloaded assets, and **Download CSV**.\n\n## Settings\n\n- `eventTypeFilter`: once you know the event type for downloads, put it here (e.g. `Download`) so request 3 reads only those events, which is much faster.\n- `downloadEventPattern`: which event types count as downloads (a regular expression).\n- `maxEventPages`: request 3 stops after this many pages of 100 events (default 200); the report says if it stopped early.\n- `downloadField`: the indexed field holding the counter.\n\n## If something goes wrong\n\nSend **5. Debug: show raw responses** on its own: it shows whether any asset has a download count, and the first events of the month and of any date, with their type names. It shows no password or token.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "Preservica-Access-Token",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{token}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "server",
+      "value": "us.preservica.com"
+    },
+    {
+      "key": "tenant",
+      "value": "UNIOWA"
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "month",
+      "value": ""
+    },
+    {
+      "key": "eventTypeFilter",
+      "value": ""
+    },
+    {
+      "key": "downloadEventPattern",
+      "value": "download|export|deliver|dissemin"
+    },
+    {
+      "key": "maxEventPages",
+      "value": "200"
+    },
+    {
+      "key": "downloadField",
+      "value": "system_and_public_analytics.downloadcount"
+    },
+    {
+      "key": "previousDownloadsAllTime",
+      "value": ""
+    },
+    {
+      "key": "downloadsHistory",
+      "value": "{}"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "tokenTime",
+      "value": "0"
+    },
+    {
+      "key": "reportMonth",
+      "value": ""
+    },
+    {
+      "key": "start",
+      "value": "0"
+    },
+    {
+      "key": "counters",
+      "value": "[]"
+    },
+    {
+      "key": "counterTotal",
+      "value": ""
+    },
+    {
+      "key": "eventTypes",
+      "value": "{}"
+    },
+    {
+      "key": "eventsByDay",
+      "value": "{}"
+    },
+    {
+      "key": "eventTotal",
+      "value": ""
+    },
+    {
+      "key": "eventsNextUrl",
+      "value": ""
+    },
+    {
+      "key": "eventPages",
+      "value": "0"
+    },
+    {
+      "key": "eventsStatus",
+      "value": ""
+    },
+    {
+      "key": "titles",
+      "value": "{}"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Log in",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    pm.collectionVariables.set('token', pm.response.json().token);",
+              "    pm.collectionVariables.set('tokenTime', String(Date.now()));",
+              "    ['start', 'eventPages'].forEach(k => pm.collectionVariables.set(k, '0'));",
+              "    pm.collectionVariables.set('counters', '[]'); pm.collectionVariables.set('counterTotal', '');",
+              "    pm.collectionVariables.set('eventTypes', '{}'); pm.collectionVariables.set('eventsByDay', '{}');",
+              "    pm.collectionVariables.set('eventTotal', ''); pm.collectionVariables.set('eventsNextUrl', '');",
+              "    pm.collectionVariables.set('eventsStatus', ''); pm.collectionVariables.set('titles', '{}');",
+              "    // Which month: the month variable (e.g. 2026-10), or else this month; in the first",
+              "    // 5 days of a month, the month that just ended.",
+              "    let y, m;",
+              "    const want = (pm.collectionVariables.get('month') || '').trim();",
+              "    const mm = want.match(/^(\\d{4})-(\\d{1,2})$/);",
+              "    if (mm) { y = +mm[1]; m = +mm[2]; }",
+              "    else {",
+              "        const now = new Date(); y = now.getFullYear(); m = now.getMonth() + 1;",
+              "        if (now.getDate() <= 5) { m -= 1; if (m === 0) { m = 12; y -= 1; } }",
+              "        if (want) console.log(`The month variable \"${want}\" isn't like 2026-10, so it was ignored.`);",
+              "    }",
+              "    pm.collectionVariables.set('reportMonth', `${y}-${String(m).padStart(2, '0')}`);",
+              "    console.log(`Logged in. Counting downloads for ${new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long' })} ${y}.`);",
+              "} else {",
+              "    console.log('Login failed: ' + pm.response.text());",
+              "    (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(null) : postman.setNextRequest(null);",
+              "}",
+              "pm.test('Logged in', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "https://{{server}}/api/accesstoken/login",
+        "description": "Logs in, starts a fresh run, and decides which month is counted.",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "username",
+              "value": "{{username}}",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{password}}",
+              "type": "text"
+            },
+            {
+              "key": "tenant",
+              "value": "{{tenant}}",
+              "type": "text"
+            }
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      }
+    },
+    {
+      "name": "2. Read the download counters",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const field = (pm.collectionVariables.get('downloadField') || 'system_and_public_analytics.downloadcount').trim();",
+              "const filters = [{ name: 'xip.document_type', values: ['IO'] }, { name: field, values: ['*'] },   // only assets with a count",
+              "                 { name: 'xip.title', values: [] }];",
+              "pm.request.body.update({ mode: 'urlencoded', urlencoded: [",
+              "    { key: 'start', value: String(pm.collectionVariables.get('start') || 0) }, { key: 'max', value: '100' },",
+              "    { key: 'q', value: JSON.stringify({ q: '*', fields: filters }) },   // '*', not '%': Preservica 9.4 returns nothing for '%'",
+              "    { key: 'metadata', value: field }, { key: 'metadata', value: 'xip.title' } ] });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "const field = (pm.collectionVariables.get('downloadField') || 'system_and_public_analytics.downloadcount').trim();",
+              "if (pm.response.code !== 200) { console.log(`Download-counter search failed (HTTP ${pm.response.code}): ` + pm.response.text().slice(0, 300)); pm.collectionVariables.set('counterTotal', 'error'); return; }",
+              "const v = pm.response.json().value;",
+              "const counters = JSON.parse(pm.collectionVariables.get('counters') || '[]');",
+              "const num = x => [].concat(x == null ? [] : x).reduce((n, s) => n + (Number(String(s).replace(/,/g, '')) || 0), 0);",
+              "(v.metadata || []).forEach((rec, i) => {",
+              "    const ref = String((v.objectIds || [])[i] || '').split('|').pop();",
+              "    const f = {}; rec.forEach(x => f[x.name] = x.value);",
+              "    const t = f['xip.title']; const title = Array.isArray(t) ? (t[0] || '') : (t || '');",
+              "    counters.push([ref, title, num(f[field])]);",
+              "});",
+              "pm.collectionVariables.set('counters', JSON.stringify(counters));",
+              "const start = Number(pm.collectionVariables.get('start') || 0) + (v.objectIds || []).length;",
+              "pm.collectionVariables.set('start', String(start));",
+              "if ((v.objectIds || []).length && start < v.totalHits) { next(pm.info.requestName); return; }",
+              "pm.collectionVariables.set('start', '0');",
+              "const total = counters.reduce((n, c) => n + c[2], 0);",
+              "pm.collectionVariables.set('counterTotal', String(total));",
+              "console.log(`${counters.length} asset(s) have a download count (${field}); ${total} downloads in all.`);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "https://{{server}}/api/content/search",
+        "description": "Finds every asset with a value in `downloadField` (default `system_and_public_analytics.downloadcount`), 100 at a time, and adds them up.",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": []
+        }
+      }
+    },
+    {
+      "name": "3. Read the month's events",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const [y, m] = pm.collectionVariables.get('reportMonth').split('-').map(Number);",
+              "const from = new Date(y, m - 1, 1), to = new Date(y, m, 1);",
+              "const nextUrl = pm.collectionVariables.get('eventsNextUrl');",
+              "if (nextUrl) { pm.request.url = nextUrl; return; }",
+              "const types = (pm.collectionVariables.get('eventTypeFilter') || '').trim();",
+              "const q = [`start=0`, `max=100`, `from=${encodeURIComponent(from.toISOString())}`, `to=${encodeURIComponent(to.toISOString())}`];",
+              "if (types) q.push(`types=${encodeURIComponent(types)}`);",
+              "pm.request.url = `https://${pm.collectionVariables.get('server')}/api/entity/events?` + q.join('&');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const next = (name) => (pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(name) : postman.setNextRequest(name);",
+              "if (pm.response.code !== 200) {",
+              "    pm.collectionVariables.set('eventsStatus', `The event log answered HTTP ${pm.response.code}: ${pm.response.text().slice(0, 200)}`);",
+              "    console.log(pm.collectionVariables.get('eventsStatus')); return;",
+              "}",
+              "const text = pm.response.text();",
+              "const types = JSON.parse(pm.collectionVariables.get('eventTypes') || '{}');",
+              "const days = JSON.parse(pm.collectionVariables.get('eventsByDay') || '{}');",
+              "const looksLike = new RegExp(pm.collectionVariables.get('downloadEventPattern') || 'download|export|deliver|dissemin|disseminat', 'i');",
+              "for (const ev of text.matchAll(/<(?:[\\w-]+:)?Event\\b([^>]*)>([\\s\\S]*?)<\\/(?:[\\w-]+:)?Event>/g)) {",
+              "    const type = (ev[1].match(/\\btype=\"([^\"]*)\"/) || [])[1] || '(no type)';",
+              "    types[type] = (types[type] || 0) + 1;",
+              "    if (looksLike.test(type)) {",
+              "        const d = ((ev[2].match(/<(?:[\\w-]+:)?Date>([^<]+)</) || [])[1] || '').slice(0, 10);",
+              "        days[d] = (days[d] || 0) + 1;",
+              "    }",
+              "}",
+              "pm.collectionVariables.set('eventTypes', JSON.stringify(types));",
+              "pm.collectionVariables.set('eventsByDay', JSON.stringify(days));",
+              "const total = (text.match(/<(?:[\\w-]+:)?TotalResults>(\\d+)</) || [])[1];",
+              "if (total) pm.collectionVariables.set('eventTotal', total);",
+              "const pages = Number(pm.collectionVariables.get('eventPages') || 0) + 1;",
+              "pm.collectionVariables.set('eventPages', String(pages));",
+              "const more = (text.match(/<(?:[\\w-]+:)?Next>(https?:\\/\\/[^<]+)</) || [])[1];",
+              "const maxPages = Number(pm.collectionVariables.get('maxEventPages') || 200);",
+              "if (more && pages < maxPages) {",
+              "    pm.collectionVariables.set('eventsNextUrl', more.replace(/&amp;/g, '&'));",
+              "    if (pages % 10 === 0) console.log(`Read ${pages * 100} of ${total || '?'} events.`);",
+              "    next(pm.info.requestName); return;",
+              "}",
+              "pm.collectionVariables.set('eventsNextUrl', '');",
+              "const seen = Object.values(types).reduce((a, b) => a + b, 0);",
+              "pm.collectionVariables.set('eventsStatus', more ? `Stopped after ${pages} pages (${seen} of ${total} events): raise maxEventPages, or set eventTypeFilter to the download event type.` : '');",
+              "console.log(`Read ${seen} event(s) in the month; types: ` + Object.entries(types).map(([t, n]) => `${t} ${n}`).join(', '));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/events",
+        "description": "Reads the event log for the month, 100 events at a time, counting events by type. In the Collection Runner it repeats until every page is read (up to `maxEventPages`)."
+      }
+    },
+    {
+      "name": "4. Show the downloads",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const month = pm.collectionVariables.get('reportMonth') || '';",
+              "const [y, mo] = month.split('-').map(Number);",
+              "const monthName = y ? new Date(y, mo - 1, 1).toLocaleString('en-US', { month: 'long' }) : '';",
+              "const prevKey = mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, '0')}`;",
+              "const counters = JSON.parse(pm.collectionVariables.get('counters') || '[]');",
+              "const counterTotalRaw = pm.collectionVariables.get('counterTotal');",
+              "const counterTotal = counterTotalRaw === '' || counterTotalRaw === 'error' ? null : Number(counterTotalRaw);",
+              "const field = (pm.collectionVariables.get('downloadField') || 'system_and_public_analytics.downloadcount').trim();",
+              "const looksLike = new RegExp(pm.collectionVariables.get('downloadEventPattern') || 'download|export|deliver|dissemin|disseminat', 'i');",
+              "const types = JSON.parse(pm.collectionVariables.get('eventTypes') || '{}');",
+              "const days = JSON.parse(pm.collectionVariables.get('eventsByDay') || '{}');",
+              "",
+              "// 1. The download counter: all-time, so the month is the change since last month's total.",
+              "const history = JSON.parse(pm.collectionVariables.get('downloadsHistory') || '{}');",
+              "const override = String(pm.collectionVariables.get('previousDownloadsAllTime') || '').replace(/,/g, '').trim();",
+              "const prev = override !== '' ? Number(override) : (history[prevKey] != null ? history[prevKey] : null);",
+              "const counterMonth = counterTotal !== null && prev !== null && counterTotal >= prev ? counterTotal - prev : null;",
+              "if (counterTotal !== null && counters.length && month) { history[month] = counterTotal; pm.collectionVariables.set('downloadsHistory', JSON.stringify(history)); }",
+              "",
+              "// 2. The event log: events in the month whose type looks like a download.",
+              "const typeRows = Object.entries(types).sort((a, b) => b[1] - a[1]).map(([type, n]) => ({ type, n, download: looksLike.test(type) }));",
+              "const eventDownloads = typeRows.filter(t => t.download).reduce((n, t) => n + t.n, 0);",
+              "const anyEvents = typeRows.length > 0;",
+              "",
+              "// What goes in the DCDS sheet: download events if the log has any, otherwise the counter's change.",
+              "let dcds = '', source = '';",
+              "if (eventDownloads) { dcds = eventDownloads; source = 'download events in the month'; }",
+              "else if (counterMonth !== null) { dcds = counterMonth; source = `the change in the download counter since ${prevKey}`; }",
+              "",
+              "const notes = [];",
+              "const es = pm.collectionVariables.get('eventsStatus');",
+              "if (es) notes.push(es);",
+              "if (counterTotalRaw === 'error') notes.push('The download-counter search failed; see the Console.');",
+              "else if (!counters.length) notes.push(`No asset has a download count (${field}), so Preservica isn't recording one. The event log is the only source this month.`);",
+              "else if (prev === null) notes.push(`The counter's all-time total (${counterTotal}) was saved as ${monthName}'s, so next month's run can work out next month's downloads. To work out ${monthName}'s now, put ${prevKey}'s all-time total in previousDownloadsAllTime and send this request again.`);",
+              "if (anyEvents && !eventDownloads) notes.push(`None of the ${typeRows.length} event type(s) in the month looks like a download (pattern: ${looksLike.source}). If one of them is downloads, set downloadEventPattern to its name and send this request again.`);",
+              "if (!anyEvents && !es) notes.push('The event log returned no events for the month.');",
+              "if (dcds === '') notes.push('No figure for the DCDS sheet yet: see the notes above.');",
+              "",
+              "const top = counters.slice().sort((a, b) => b[2] - a[2]);",
+              "const esc = s => { s = String(s == null ? '' : s); return /[\",\\r\\n]/.test(s) ? '\"' + s.replace(/\"/g, '\"\"') + '\"' : s; };",
+              "const csv = [['section', 'name', 'value', 'title'].join(',')]",
+              "    .concat([['DCDS', 'Preservica #Downloads', dcds, source], ['counter', 'all-time total', counterTotal == null ? '' : counterTotal, field],",
+              "             ['counter', `${monthName} ${y}`, counterMonth == null ? '' : counterMonth, prev == null ? '' : `previous total ${prev}`],",
+              "             ['events', `download events in ${monthName} ${y}`, eventDownloads, '']].map(r => r.map(esc).join(',')))",
+              "    .concat(typeRows.map(t => ['event type', t.type, t.n, t.download ? 'counted as downloads' : ''].map(esc).join(',')))",
+              "    .concat(Object.keys(days).sort().map(d => ['download events by day', d, days[d], ''].map(esc).join(',')))",
+              "    .concat(top.map(c => ['asset all-time downloads', c[0], c[2], c[1]].map(esc).join(','))).join('\\r\\n');",
+              "console.log(`${monthName} ${y}: #Downloads ${dcds === '' ? '(none yet)' : dcds}${source ? ' from ' + source : ''}. Counter total ${counterTotal == null ? '-' : counterTotal}; download events ${eventDownloads}.`);",
+              "const template = `",
+              "<style>body{font-family:sans-serif;font-size:13px} table{border-collapse:collapse;margin:6px 0 14px} td,th{border:1px solid #ccc;padding:3px 8px;text-align:left}",
+              "td.n{text-align:right} .big{font-size:22px;font-weight:bold} textarea{width:100%;height:120px;font-family:monospace;font-size:12px} button{font-size:14px;padding:4px 12px}",
+              ".box{background:#fff3cd;border:1px solid #e0c36c;padding:6px 8px;margin:4px 0} .yes{color:#1a7f37;font-weight:bold}</style>",
+              "<h2>Preservica downloads, {{monthName}} {{year}}</h2>",
+              "<p>DCDS tab, Preservica <b>#Downloads</b>: <span class=big>{{dcdsShown}}</span> {{#if source}}<br><i>from {{source}}</i>{{/if}}",
+              "<button onclick=\"var b=new Blob(['\\\\ufeff'+document.getElementById('csv').value],{type:'text/csv'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='preservica_downloads_{{month}}.csv';document.body.appendChild(a);a.click();\">Download CSV</button></p>",
+              "{{#each notes}}<div class=box>{{this}}</div>{{/each}}",
+              "<h3>1. Download counter ({{field}})</h3>",
+              "<table><tr><td>Assets with a count</td><td class=n>{{counterAssets}}</td></tr><tr><td>All-time total</td><td class=n>{{counterTotal}}</td></tr>",
+              "<tr><td>Previous month's total ({{prevKey}})</td><td class=n>{{prev}}</td></tr><tr><td><b>{{monthName}}</b></td><td class=n><b>{{counterMonth}}</b></td></tr></table>",
+              "{{#if top.length}}<p>Most downloaded (all time):</p><table><tr><th>Asset</th><th>Title</th><th>Downloads</th></tr>{{#each top}}<tr><td>{{this.[0]}}</td><td>{{this.[1]}}</td><td class=n>{{this.[2]}}</td></tr>{{/each}}</table>{{/if}}",
+              "<h3>2. Event log, {{monthName}} {{year}}</h3>",
+              "{{#if typeRows.length}}<table><tr><th>Event type</th><th>Events</th><th>Counted as downloads?</th></tr>{{#each typeRows}}<tr><td>{{type}}</td><td class=n>{{n}}</td><td>{{#if download}}<span class=yes>yes</span>{{/if}}</td></tr>{{/each}}</table>",
+              "<p>Event types matching <code>{{pattern}}</code> count as downloads. Change <code>downloadEventPattern</code> and send this request again to change which.</p>{{else}}<p>No events.</p>{{/if}}",
+              "{{#if dayRows.length}}<p>Download events by day:</p><table>{{#each dayRows}}<tr><td>{{d}}</td><td class=n>{{n}}</td></tr>{{/each}}</table>{{/if}}",
+              "<p>CSV (if the button doesn't download anything, copy this into a file ending in .csv):</p><textarea readonly>{{csv}}</textarea>",
+              "<textarea id=csv style=display:none>{{csv}}</textarea>`;",
+              "pm.visualizer.set(template, { monthName, year: y, month, dcdsShown: dcds === '' ? '—' : dcds, source, notes, field,",
+              "    counterAssets: counters.length, counterTotal: counterTotal == null ? '—' : counterTotal, prevKey, prev: prev == null ? '—' : prev,",
+              "    counterMonth: counterMonth == null ? '—' : counterMonth, top: top.slice(0, 20), typeRows, pattern: looksLike.source,",
+              "    dayRows: Object.keys(days).sort().map(d => ({ d, n: days[d] })), csv });",
+              "(pm.execution && pm.execution.setNextRequest) ? pm.execution.setNextRequest(null) : postman.setNextRequest(null);   // 5 is for debugging only"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/versiondetails/version",
+        "description": "Open the **Visualize** tab: the #Downloads figure for the DCDS sheet, both sources, the most-downloaded assets and **Download CSV**. Send it again after changing `downloadEventPattern` or `previousDownloadsAllTime`; nothing needs reading again."
+      }
+    },
+    {
+      "name": "5. Debug: show raw responses",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Shows Preservica's raw answers for the two sources: the download-counter field and",
+              "// the event log (this month, and the latest events of any date). Nothing is changed.",
+              "(async () => {",
+              "const server = pm.collectionVariables.get('server');",
+              "const send = (url, body) => new Promise((ok, fail) => {",
+              "    const r = { url, header: { 'Preservica-Access-Token': pm.collectionVariables.get('token') } };",
+              "    if (body) { r.method = 'POST'; r.body = { mode: 'urlencoded', urlencoded: body }; }",
+              "    pm.sendRequest(r, (e, res) => e ? fail(e) : ok(res));",
+              "});",
+              "const field = (pm.collectionVariables.get('downloadField') || 'system_and_public_analytics.downloadcount').trim();",
+              "const steps = [];",
+              "const show = (name, url, res, note) => { const body = res ? res.text() : '(no answer)';",
+              "    steps.push({ name, url: url.replace(/^https?:\\/\\/[^/]+/, ''), code: res ? res.code : 'error', body: body.slice(0, 5000), note });",
+              "    console.log(`${name}: HTTP ${res ? res.code : 'error'}\\n${body.slice(0, 1500)}`); };",
+              "const searchUrl = `https://${server}/api/content/search`;",
+              "const q = filters => [{ key: 'start', value: '0' }, { key: 'max', value: '5' }, { key: 'q', value: JSON.stringify({ q: '*', fields: filters }) },",
+              "                      { key: 'metadata', value: field }, { key: 'metadata', value: 'xip.title' }];",
+              "show(`1 assets with ${field}`, searchUrl, await send(searchUrl, q([{ name: 'xip.document_type', values: ['IO'] }, { name: field, values: ['*'] }, { name: 'xip.title', values: [] }])),",
+              "    'totalHits is how many assets have a download count. 0 means Preservica records none in this field.');",
+              "const [y, m] = (pm.collectionVariables.get('reportMonth') || '').split('-').map(Number);",
+              "if (y) {",
+              "    const u = `https://${server}/api/entity/events?start=0&max=10&from=${encodeURIComponent(new Date(y, m - 1, 1).toISOString())}&to=${encodeURIComponent(new Date(y, m, 1).toISOString())}`;",
+              "    show('2 events in the month', u, await send(u), 'The first 10 events of the month. Each <Event type=\"...\"> shows an event type name.');",
+              "}",
+              "const u2 = `https://${server}/api/entity/events?start=0&max=10`;",
+              "show('3 latest events (any date)', u2, await send(u2), 'For comparison: events with no date filter.');",
+              "const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');",
+              "pm.visualizer.set(`<style>body{font-family:sans-serif;font-size:12px} pre{white-space:pre-wrap;word-break:break-all;background:#f6f6f6;padding:6px;border:1px solid #ddd}</style>",
+              "<p>Version ` + '2026-11-04a' + `. Raw answers from Preservica; no password or token is shown.</p>` +",
+              "    steps.map(s => `<h3>${esc(s.name)}: HTTP ${esc(s.code)}</h3><div>${esc(s.url)}</div><div><i>${esc(s.note)}</i></div><pre>${esc(s.body)}</pre>`).join(''), {});",
+              "})();"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "https://{{server}}/api/entity/versiondetails/version",
+        "description": "Send on its own: shows whether any asset has a download count, and the first events of the month and of any date, with their type names."
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Logs in again automatically when the token is missing or over 12 minutes old.",
+          "if (pm.info.requestName.startsWith('1. Log in')) return;",
+          "const age = Date.now() - Number(pm.collectionVariables.get('tokenTime') || 0);",
+          "if (pm.collectionVariables.get('token') && age < 12 * 60 * 1000) return;",
+          "pm.sendRequest({",
+          "    url: `https://${pm.collectionVariables.get('server')}/api/accesstoken/login`,",
+          "    method: 'POST',",
+          "    body: { mode: 'urlencoded', urlencoded: [",
+          "        { key: 'username', value: pm.collectionVariables.get('username') },",
+          "        { key: 'password', value: pm.collectionVariables.get('password') },",
+          "        { key: 'tenant', value: pm.collectionVariables.get('tenant') } ] }",
+          "}, (err, res) => {",
+          "    if (!err && res.code === 200) {",
+          "        pm.collectionVariables.set('token', res.json().token);",
+          "        pm.collectionVariables.set('tokenTime', String(Date.now()));",
+          "        console.log('Logged in again (token refreshed).');",
+          "    } else {",
+          "        console.log('Automatic login failed: ' + (err || res.text()));",
+          "    }",
+          "});"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.response.code === 401 && !pm.info.requestName.startsWith('1. Log in')) {",
+          "    pm.collectionVariables.set('tokenTime', '0');",
+          "    console.log('The token was rejected (401). The next request will log in again first.');",
+          "}"
+        ]
+      }
+    }
+  ]
+}
