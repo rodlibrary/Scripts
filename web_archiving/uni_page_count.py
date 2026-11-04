@@ -11,6 +11,9 @@ Non-invasive by design:
   * Optional subdomain discovery uses public Certificate Transparency logs
     (crt.sh), which sends no traffic to UNI beyond one robots.txt check per host.
   * Optional crawl mode is capped (default 500 pages) and fetches HTML only.
+  * Crawler traps are skipped and left out of the count: calendar day/week/month
+    views, repeating or very deep paths, login/edit/search pages, feeds and iCal
+    exports, session IDs, and any URL pattern that keeps generating new pages.
 
 Standard library only (Python 3.8+). Examples:
 
@@ -27,6 +30,7 @@ import collections
 import csv
 import gzip
 import json
+import re
 import socket
 import sys
 import time
@@ -45,6 +49,90 @@ NON_PAGE_EXT = {
     ".mov", ".avi", ".wmv", ".m4a", ".wav", ".css", ".js", ".json", ".xml",
     ".ics", ".woff", ".woff2", ".ttf", ".eot", ".exe", ".dmg", ".iso",
 }
+
+# --------------------------------------------------------------------------- #
+# Crawler traps
+# --------------------------------------------------------------------------- #
+# A date such as 2026, 2026-11, 2026-11-04, 2026/11 or 2026/11/04.
+_DATE = r"(?:19|20)\d{2}(?:[-/](?:0?[1-9]|1[0-2])(?:[-/](?:0?[1-9]|[12]\d|3[01]))?)?"
+_MONTH = r"(?:19|20)\d{2}[-/](?:0?[1-9]|1[0-2])(?:[-/](?:0?[1-9]|[12]\d|3[01]))?"
+# Calendar views: /day/2026-11-04, /month/2026, /calendar/month/2026-11, /events/2026/11 ...
+# (calendar.uni.edu uses /day/YYYY-MM-DD, with links to the next and previous day forever).
+CALENDAR_VIEW_RE = re.compile(
+    r"/(?:day|week|month|year)/" + _DATE + r"(?:/|$)"
+    r"|/(?:calendar|calendars|events|event-calendar|agenda)"
+    r"(?:/(?:day|week|month|year|list|agenda))?/" + _MONTH + r"(?:/|$)", re.I)
+# A path that ends in a month or day (not a bare year, which is often a real page
+# such as /commencement/2025): /news/2026/11, /archive/2026-11-04
+DATE_ARCHIVE_RE = re.compile(
+    r"/(?:19|20)\d{2}[-/](?:0?[1-9]|1[0-2])(?:[-/](?:0?[1-9]|[12]\d|3[01]))?/?$")
+# Path segments that mark pages which aren't content, or are endless or private.
+TRAP_SEGMENTS = {
+    "login": "login/admin", "logout": "login/admin", "signin": "login/admin",
+    "sign-in": "login/admin", "signout": "login/admin", "wp-admin": "login/admin",
+    "wp-login.php": "login/admin", "shibboleth.sso": "login/admin",
+    "edit": "login/admin", "delete": "login/admin", "revisions": "login/admin",
+    "search": "search results", "site-search": "search results",
+    "feed": "feed/export", "feeds": "feed/export", "rss": "feed/export",
+    "ical": "feed/export", "icalendar": "feed/export",
+    "print": "print view", "printpdf": "print view",
+}
+# Drupal account pages: /user/login, /user/register, /user/password, /user/123
+USER_PAGE_RE = re.compile(r"(?:^|/)user/(?:login|logout|register|password|\d+)(?:/|$)", re.I)
+# Query parameters that never identify a different page (kept out even with --keep-query).
+DROP_PARAMS = {
+    "fbclid", "gclid", "msclkid", "sid", "sessionid", "phpsessid", "jsessionid",
+    "sort", "order", "orderby", "dir", "view", "display", "format", "print",
+    "date", "day", "week", "month", "year", "start", "end", "from", "to",
+    "eventdisplay", "ical", "outlook-ical", "destination", "returnto", "return",
+    "redirect", "redirect_to", "next", "ref", "share",
+}
+DROP_PARAM_PREFIXES = ("utm_", "tribe-", "tribe_", "_ga", "mc_")
+MAX_URL_LENGTH = 300
+MAX_PATH_DEPTH = 15
+
+
+def trap_reason(url):
+    """Return why a URL looks like a crawler trap or non-content page, or None."""
+    if len(url) > MAX_URL_LENGTH:
+        return "very long URL"
+    path = urllib.parse.urlsplit(url).path
+    segs = [s.lower() for s in path.split("/") if s]
+    if len(segs) > MAX_PATH_DEPTH:
+        return "very deep path"
+    counts = collections.Counter(segs)
+    if counts and counts.most_common(1)[0][1] >= 3:
+        return "repeating path"
+    if any(a == b for a, b in zip(segs, segs[1:])):     # /more/more
+        return "repeating path"
+    for i in range(len(segs) - 3):                      # /a/b/a/b
+        if segs[i:i + 2] == segs[i + 2:i + 4]:
+            return "repeating path"
+    if CALENDAR_VIEW_RE.search(path) or DATE_ARCHIVE_RE.search(path):
+        return "calendar/date archive"
+    if USER_PAGE_RE.search(path):
+        return "login/admin"
+    for s in segs:
+        if s in TRAP_SEGMENTS:
+            return TRAP_SEGMENTS[s]
+    return None
+
+
+def url_pattern(url):
+    """The URL with digits replaced, so /x/2026/11/04 and /x/2026/11/05 share a pattern.
+
+    Returns None for URLs with fewer than two numbers and no query, so ordinary
+    Drupal pages (/node/1234) are never limited.
+    """
+    p = urllib.parse.urlsplit(url)
+    if len(re.findall(r"\d+", p.path)) < 2 and not p.query:
+        return None
+    host = p.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    path = re.sub(r"\d+", "N", p.path.lower())
+    names = sorted(k for k, _ in urllib.parse.parse_qsl(p.query, keep_blank_values=True))
+    return host + path + ("?" + "&".join(names) if names else "")
 
 
 # --------------------------------------------------------------------------- #
@@ -89,8 +177,11 @@ class PoliteFetcher:
                 crawl_delay = None
         return max(self.delay, float(crawl_delay or 0))
 
-    def _raw_get(self, url, retries=2):
-        """GET with rate limiting and back-off. Returns (status, headers, body, final_url)."""
+    def _raw_get(self, url, retries=2, want_html=False):
+        """GET with rate limiting and back-off. Returns (status, headers, body, final_url).
+
+        With want_html, a response that isn't HTML is closed without reading its body.
+        """
         host = self._origin(url)
         for attempt in range(retries + 1):
             self._wait(host)
@@ -102,6 +193,8 @@ class PoliteFetcher:
             self.requests_made += 1
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    if want_html and "text/html" not in resp.headers.get("Content-Type", "").lower():
+                        return resp.status, resp.headers, b"", resp.geturl()
                     body = resp.read(self.max_bytes + 1)
                     if len(body) > self.max_bytes:
                         self.log(f"  ! {url} exceeds {self.max_bytes} bytes; truncated")
@@ -143,11 +236,17 @@ class PoliteFetcher:
         rp = self.robots_for(url)
         return rp is not None and rp.can_fetch(self.ua, url)
 
-    def get(self, url):
+    def get(self, url, want_html=False, max_bytes=None):
         if not self.allowed(url):
             self.log(f"  - robots.txt disallows {url}")
             return None, {}, b"", url
-        return self._raw_get(url)
+        if max_bytes is None:
+            return self._raw_get(url, want_html=want_html)
+        saved, self.max_bytes = self.max_bytes, max_bytes
+        try:
+            return self._raw_get(url, want_html=want_html)
+        finally:
+            self.max_bytes = saved
 
 
 # --------------------------------------------------------------------------- #
@@ -164,17 +263,26 @@ def normalize(url, keep_query=False):
     host = (p.hostname or "").lower()
     if p.port and not ((scheme == "http" and p.port == 80) or (scheme == "https" and p.port == 443)):
         host = f"{host}:{p.port}"
-    path = p.path or "/"
+    path = re.sub(r";[^/]*", "", p.path) or "/"          # ;jsessionid=... and other path params
+    path = re.sub(r"/{2,}", "/", path)
     if path.endswith("/index.html") or path.endswith("/index.htm") or path.endswith("/index.php"):
         path = path.rsplit("/", 1)[0] + "/"
-    query = p.query if keep_query else ""
+    query = ""
+    if keep_query and p.query:
+        kept = [(k, v) for k, v in urllib.parse.parse_qsl(p.query, keep_blank_values=True)
+                if k.lower() not in DROP_PARAMS and not k.lower().startswith(DROP_PARAM_PREFIXES)]
+        query = urllib.parse.urlencode(sorted(kept))
     return urllib.parse.urlunsplit((scheme, host, path, query, ""))
 
 
 def page_key(url):
-    """Scheme-agnostic key so http:// and https:// copies count once."""
+    """Key that counts http/https, www./bare host and trailing-slash copies once."""
     p = urllib.parse.urlsplit(url)
-    return f"{p.netloc}{p.path}" + (f"?{p.query}" if p.query else "")
+    host = p.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    path = p.path.rstrip("/") or "/"
+    return f"{host}{path}" + (f"?{p.query}" if p.query else "")
 
 
 def is_page_url(url):
@@ -299,20 +407,26 @@ class LinkParser(HTMLParser):
                 self.noindex_nofollow = True
 
 
-def crawl(fetcher, start_urls, domain, keep_query, max_pages):
+def crawl(fetcher, start_urls, domain, keep_query, max_pages, max_per_pattern, skipped):
+    """Breadth-first crawl. Trap URLs are never requested; they are tallied in `skipped`."""
     queue = collections.deque(normalize(u, keep_query) for u in start_urls)
     queued = {page_key(u) for u in queue}
+    per_pattern = collections.Counter()
     pages = {}
     while queue and len(pages) < max_pages:
         url = queue.popleft()
         if not is_page_url(url):
             continue
-        status, headers, body, final = fetcher.get(url)
+        status, headers, body, final = fetcher.get(url, want_html=True, max_bytes=5 * 1024 * 1024)
         ctype = (headers.get("Content-Type", "") if headers else "").lower()
         if status != 200 or "text/html" not in ctype:
             continue
         final = normalize(final, keep_query)
         if not in_domain(final, domain):
+            continue
+        reason = trap_reason(final)                 # e.g. redirected to a login page
+        if reason:
+            skipped[reason][page_key(final)] = final
             continue
         pages.setdefault(page_key(final), final)
         if len(pages) % 25 == 0:
@@ -330,36 +444,67 @@ def crawl(fetcher, start_urls, domain, keep_query, max_pages):
                 continue
             u = normalize(absu, keep_query)
             k = page_key(u)
-            if k not in queued:
-                queued.add(k)
-                queue.append(u)
+            if k in queued:
+                continue
+            queued.add(k)
+            reason = trap_reason(u)
+            if not reason:
+                pattern = url_pattern(u)
+                if pattern is not None:
+                    per_pattern[pattern] += 1
+                    if per_pattern[pattern] > max_per_pattern:
+                        reason = "repeating URL pattern"
+            if reason:
+                skipped[reason][k] = u
+                continue
+            queue.append(u)
     return list(pages.values()), len(queue)
 
 
 # --------------------------------------------------------------------------- #
 # Reporting
 # --------------------------------------------------------------------------- #
-def report(urls, top):
+def report(urls, skipped, top, include_traps):
+    """Print the totals. Returns (counted page URLs, {reason: [URLs]} left out)."""
     html = [u for u in urls if is_page_url(u)]
     docs = len(urls) - len(html)
-    by_host = collections.Counter(urllib.parse.urlsplit(u).netloc for u in html)
-    by_section = collections.Counter()
+    counted = []
     for u in html:
+        reason = None if include_traps else trap_reason(u)
+        if reason:
+            skipped[reason][page_key(u)] = u
+        else:
+            counted.append(u)
+    counted_keys = {page_key(u) for u in counted}
+    excluded = {}
+    for reason, d in skipped.items():
+        us = [u for k, u in d.items() if k not in counted_keys]
+        if us:
+            excluded[reason] = us
+
+    by_host = collections.Counter(urllib.parse.urlsplit(u).netloc for u in counted)
+    by_section = collections.Counter()
+    for u in counted:
         p = urllib.parse.urlsplit(u)
         first = p.path.strip("/").split("/", 1)[0]
         by_section[f"{p.netloc}/{first}"] += 1
 
     print("\n================ RESULTS ================")
-    print(f"Unique web pages (HTML):   {len(html):,}")
+    print(f"Unique web pages (HTML):   {len(counted):,}")
     print(f"Documents/files excluded:  {docs:,}")
+    print(f"Trap URLs left out:        {sum(len(v) for v in excluded.values()):,}")
     print(f"Hosts with pages:          {len(by_host):,}")
+    if excluded:
+        print("\nLeft out as calendars and other crawler traps (check the examples):")
+        for reason, us in sorted(excluded.items(), key=lambda kv: -len(kv[1])):
+            print(f"  {len(us):>8,}  {reason:<24} e.g. {sorted(us)[0]}")
     print("\nPages by host:")
     for host, n in by_host.most_common(top):
         print(f"  {n:>8,}  {host}")
     print(f"\nLargest sections (top {top}):")
     for sec, n in by_section.most_common(top):
         print(f"  {n:>8,}  {sec}")
-    return html
+    return counted, excluded
 
 
 def main():
@@ -374,13 +519,19 @@ def main():
     ap.add_argument("--crawl", action="store_true",
                     help="Also do a capped crawl (use when sitemaps are missing or incomplete).")
     ap.add_argument("--max-pages", type=int, default=500, help="Crawl cap (default 500).")
+    ap.add_argument("--max-per-pattern", type=int, default=25,
+                    help="Crawl: most URLs to follow that differ only by numbers, such as dates "
+                         "or ?page=N (default 25).")
     ap.add_argument("--max-sitemaps", type=int, default=500, help="Max sitemap files to read.")
     ap.add_argument("--delay", type=float, default=2.0,
                     help="Minimum seconds between requests to the same host (default 2.0).")
     ap.add_argument("--timeout", type=float, default=20.0)
     ap.add_argument("--keep-query", action="store_true",
                     help="Treat URLs that differ only by ?query as separate pages.")
-    ap.add_argument("--out", help="Write the list of page URLs to this CSV file.")
+    ap.add_argument("--include-traps", action="store_true",
+                    help="Count calendar views and other trap URLs listed in sitemaps "
+                         "(the crawl still never follows them).")
+    ap.add_argument("--out", help="Write the page URLs, and the URLs left out, to this CSV file.")
     ap.add_argument("--top", type=int, default=20, help="Rows to show in breakdowns.")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
@@ -391,6 +542,7 @@ def main():
     domain = args.domain.lower().strip(".")
     ua = f"PageCountBot/1.0 (non-commercial page count; contact: {args.contact})"
     fetcher = PoliteFetcher(ua, args.delay, args.timeout, 60 * 1024 * 1024, args.verbose)
+    skipped = collections.defaultdict(dict)        # reason -> {page_key: url}
 
     hosts = args.hosts or [domain, f"www.{domain}"]
     if args.discover_subdomains:
@@ -407,24 +559,28 @@ def main():
         live = [o for o in origins if fetcher.robots.get(PoliteFetcher._origin(o)) is not None]
         print(f"Crawling up to {args.max_pages} pages from {len(live)} reachable host(s)...",
               file=sys.stderr)
-        crawled, left = crawl(fetcher, [o + "/" for o in live], domain, args.keep_query, args.max_pages)
+        crawled, left = crawl(fetcher, [o + "/" for o in live], domain, args.keep_query,
+                              args.max_pages, args.max_per_pattern, skipped)
         known = {page_key(u) for u in urls}
         extra = [u for u in crawled if page_key(u) not in known]
         print(f"Crawl found {len(crawled):,} pages, {len(extra):,} not in any sitemap"
               + (f"; {left:,} links left unvisited (cap reached)" if left else ""), file=sys.stderr)
         urls += extra
 
-    html = report(urls, args.top)
+    counted, excluded = report(urls, skipped, args.top, args.include_traps)
     print(f"\nHTTP requests made to the site: {fetcher.requests_made:,}")
 
     if args.out:
         with open(args.out, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["url", "host"])
-            for u in sorted(html):
-                w.writerow([u, urllib.parse.urlsplit(u).netloc])
-        print(f"Wrote {len(html):,} URLs to {args.out}")
-
+            w.writerow(["url", "host", "status"])
+            for u in sorted(counted):
+                w.writerow([u, urllib.parse.urlsplit(u).netloc, "counted"])
+            for reason in sorted(excluded):
+                for u in sorted(excluded[reason]):
+                    w.writerow([u, urllib.parse.urlsplit(u).netloc, f"left out: {reason}"])
+        print(f"Wrote {len(counted):,} page URLs and "
+              f"{sum(len(v) for v in excluded.values()):,} left-out URLs to {args.out}")
 
 if __name__ == "__main__":
     try:
