@@ -1,4 +1,4 @@
-# Fills in the Preservica reference of each ARK in the GitLab resolver's
+# By hand only. Fills in the Preservica reference of each ARK in the GitLab resolver's
 # resolve.csv, from the ARKs in Preservica's MODS (Archival Resource Key and
 # Location (URL)), and pushes resolve.csv back when it changed. Setup steps are
 # in arks/README.md.
@@ -7,11 +7,10 @@
 # report goes to the GitLab resolver repository, not to this run.
 name: ARKs - match Preservica references
 
+# The weekly run happens in GitLab instead (the resolver repository's pipeline
+# schedule): GitHub's servers can't reach git.uni.edu. This workflow is kept for
+# running by hand, in case GitLab becomes reachable from GitHub.
 on:
-  schedule:
-    # Mondays at 12:23 UTC (7:23 am Central daylight time, 6:23 am standard time),
-    # after the weekly Preservica metadata export.
-    - cron: "23 12 * * 1"
   workflow_dispatch:
     inputs:
       dry_run:

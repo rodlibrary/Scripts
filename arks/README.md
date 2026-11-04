@@ -5,7 +5,7 @@ Mint Archival Resource Keys (ARKs), publish them to the GitLab resolver reposito
 | File | What it does | Runs on |
 |---|---|---|
 | [`generate_arks.py`](generate_arks.py) | Mints ARKs from a CSV, then adds them to `resolve.csv` and the master list, pulling and pushing the GitLab copies | Any computer with Python 3 (no extra packages) |
-| [`match_preservica.py`](match_preservica.py) | Reads the ARK fields of every Preservica asset's MODS record and fills in each ARK's `preservica_ref` (and a `target_url` where none is set) in `resolve.csv` | Weekly on GitHub Actions, or any computer with Python 3 |
+| [`match_preservica.py`](match_preservica.py) | Reads the ARK fields of every Preservica asset's MODS record and fills in each ARK's `preservica_ref` (and a `target_url` where none is set) in `resolve.csv` | Weekly in GitLab (the resolver's pipeline), or any computer on campus with Python 3 |
 | [`check_gitlab.py`](check_gitlab.py) | Tests the GitLab connection step by step, including a test push to a temporary branch, without touching `main` | Any computer with Python 3 |
 | [`arks.csv`](arks.csv) | Blank input template (header row only) | – |
 | [`tests/`](tests/) | Offline tests with a fake GitLab and a fake Preservica | `python3 -m unittest discover -s arks/tests` |
@@ -16,7 +16,7 @@ Mint Archival Resource Keys (ARKs), publish them to the GitLab resolver reposito
 2. **Catalogue:** put each ARK in the asset's MODS in Preservica, in the template's two ARK fields:
    - **Archival Resource Key:** `<identifier displayLabel="Archival Resource Key" type="ark">`, holding the blade (such as `s3x7k9q2mbd`);
    - **Location (URL):** `<physicalLocation displayLabel="Location (URL)" type="url"><url>`, holding the full address (such as `https://n2t.net/ark:/32498/s3x7k9q2mbd`).
-3. **Match:** every Monday, the [GitHub workflow](../.github/workflows/arks-match-preservica.yml) runs `match_preservica.py`. It finds those ARKs in Preservica, records which asset holds each one in `resolve.csv`, points ARKs that have no target yet at the asset's page in Preservica's portal, and pushes `resolve.csv` back to GitLab. You can run it yourself at any time, or add `--match-preservica` to step 1 to do everything in one command.
+3. **Match:** every Monday, a [scheduled pipeline in the GitLab resolver repository](#weekly-in-gitlab) downloads `match_preservica.py` from here and runs it. It finds those ARKs in Preservica, records which asset holds each one in `resolve.csv`, points ARKs that have no target yet at the asset's page in Preservica's portal, and pushes `resolve.csv` back. You can run it yourself at any time, or add `--match-preservica` to step 1 to do everything in one command.
 
 The GitLab repository holds the copies of record. The scripts always start from GitLab's copies and merge your local rows in, so they never overwrite newer rows.
 
@@ -124,7 +124,7 @@ These are never filled in, only reported:
 
 The blade may be entered with or without the shoulder: the master list connects a bare blade to its ARK. Hyphens are ignored, as they carry no meaning in ARKs.
 
-Every run writes `match_report.csv`: one row per asset with ARK fields, with the outcome. The weekly GitHub run pushes it to the GitLab resolver repository whenever it changes, instead of attaching it to the public run.
+Every run writes `match_report.csv`: one row per asset with ARK fields, with the outcome. The weekly run pushes it to the GitLab resolver repository whenever it changes.
 
 ### Run it on your computer
 
@@ -138,23 +138,44 @@ python3 match_preservica.py --from-gitlab --push-to-gitlab            # update G
 
 Without `--from-gitlab` and `--push-to-gitlab` it works on the `resolve.csv` in the folder. Other options: `--overwrite`, `--portal-url` (the target address for matched ARKs, with `{ref}` for the reference; `''` leaves `target_url` alone), `--naan`, `--push-report`, and `--workers` (assets read at once, default 4).
 
-### Weekly on GitHub Actions
+### Weekly in GitLab
 
-The workflow [`.github/workflows/arks-match-preservica.yml`](../.github/workflows/arks-match-preservica.yml) runs every Monday at 12:23 UTC. Run it at any time from **Actions > ARKs - match Preservica references > Run workflow**, optionally as a dry run.
+The resolver repository's [`.gitlab-ci.yml`](https://git.uni.edu/rod-library/resolver/-/blob/main/.gitlab-ci.yml) has three jobs:
 
-The log shows only counts, since this repository is public. The per-asset report goes to GitLab.
+- **`match-preservica`** runs on a pipeline schedule every Monday. It downloads `generate_arks.py`, `match_preservica.py` and `check_gitlab.py` from this repository (`main`, or the branch, tag or commit in the CI/CD variable `SCRIPTS_REF`). It then runs `match_preservica.py --from-gitlab --push-to-gitlab --push-report`. GitLab is on the campus network and Preservica is on the internet, so it can reach both. The report is also kept as a job artifact for 30 days.
+- **`check-resolve-csv`** runs whenever `resolve.csv` changes, whether by a script or by hand. It fails, and GitLab emails you, if the header is wrong, an ARK appears twice, a status isn't `active`, `withdrawn` or `unmatched`, or an `active` row has no `target_url`.
+- **`check-gitlab`** runs `check_gitlab.py` from the runner, when started by hand.
+
+**Setup (one time), in the resolver project:**
+
+1. **Settings > CI/CD > Variables > Add variable**, three times, each with **Masked** ticked:
+   - `PRESERVICA_USERNAME`: the Preservica service account;
+   - `PRESERVICA_PASSWORD`: its password;
+   - `GITLAB_TOKEN`: the project access token (api scope).
+
+   **Protected** can be ticked too, since the schedule runs on the protected `main` branch.
+2. **Build > Pipeline schedules > New schedule**:
+   - description: *Match ARKs in Preservica*;
+   - interval: custom, `23 7 * * 1` (Mondays 7:23 am);
+   - cron timezone: *[UTC-6] Central Time (US & Canada)*;
+   - target branch: `main`;
+   - leave **Activated** ticked, and save.
+3. **Try it:** on the schedule, click **Run** (the play button). Or use **Build > Pipelines > Run pipeline**, adding the variable `DRY_RUN` = `true` for a report-only run. Open the `match-preservica` job to see the counts.
+
+The jobs need a GitLab runner with internet access, to download the scripts from GitHub and reach Preservica. The `python:3.12-slim` image is used on Docker runners; a shell runner needs `python3` installed. If the pipeline stays *pending*, ask IT whether the project has a runner (**Settings > CI/CD > Runners**).
+
+The GitHub workflow [`.github/workflows/arks-match-preservica.yml`](../.github/workflows/arks-match-preservica.yml) no longer runs on a schedule, because GitHub's servers can't reach git.uni.edu. It's kept for running by hand.
 
 ## Setup (one time)
 
 1. **GitLab token.** In [rod-library/resolver](https://git.uni.edu/rod-library/resolver), go to **Settings > Access tokens** and create a project access token with the **Maintainer** role and the **api** scope. Copy it. GitLab protects `main` by default so that only Maintainers can push to it. To use a **Developer** token instead, set **Allowed to push and merge** for `main` to *Developers + Maintainers* in **Settings > Repository > Protected branches**.
 2. **On your computer:** set the token before running the scripts: `export GITLAB_TOKEN=...` on a Mac, or `$env:GITLAB_TOKEN = "..."` in PowerShell. Never put the token in a file in this repository. Then run `python3 check_gitlab.py` (see [Test the GitLab connection](#test-the-gitlab-connection)).
-3. **In GitHub:** in this repository, go to **Settings > Secrets and variables > Actions > Secrets** and add a repository secret `GITLAB_TOKEN` with the token. The workflow also uses the `PRESERVICA_USERNAME`, `PRESERVICA_PASSWORD`, `PRESERVICA_TENANT` and `PRESERVICA_SERVER` secrets that the [scheduled Preservica export](../preservica/README.md#scheduled-export-on-github-actions) already uses. The Preservica account needs Read Metadata on the assets' security tags.
+3. **In GitLab:** add the CI/CD variables and the pipeline schedule (see [Weekly in GitLab](#weekly-in-gitlab)). The Preservica account needs Read Metadata on the assets' security tags. The GitHub secret `GITLAB_TOKEN` is only needed for the by-hand GitHub workflow.
 4. **Moving from rod-library/redirects:** copy that repository's `redirects.csv` into the resolver repository as `resolve.csv`, along with `ark_master_list.csv`. Then point Apache at `resolve.csv`.
-5. Optional repository **variables** (same page, **Variables** tab):
-   - `GITLAB_PROJECT` and `GITLAB_BRANCH`, if the resolver project or branch differ from `rod-library/resolver` and `main`;
-   - `PRESERVICA_PORTAL_URL`, to send matched ARKs somewhere other than the portal page.
-
-**If the workflow says GitHub can't reach git.uni.edu,** the GitLab server only accepts connections from campus. Run `match_preservica.py --from-gitlab --push-to-gitlab` on a campus computer instead, or use `generate_arks.py ... --push-to-gitlab --match-preservica`, which does it as part of minting.
+5. Optional GitLab CI/CD variables:
+   - `SCRIPTS_REF`, to run a particular branch, tag or commit of this repository instead of `main`;
+   - `PRESERVICA_PORTAL_URL`, to send matched ARKs somewhere other than the portal page;
+   - `DRY_RUN` = `true`, for report-only runs.
 
 ## Test the GitLab connection
 
