@@ -39,7 +39,7 @@ Column headers are case-insensitive and surrounding whitespace is ignored.
     format        optional  File / media format (e.g. application/pdf)
     relation      optional  Related identifier or resource
     source        optional  Source / provenance citation
-    dc_path       optional  Digital Commons path for the redirect manifest:
+    dc_path       optional  Digital Commons path for the resolve manifest:
                             a landing-page key (etd/123, pias/vol94/iss4/3)
                             or a collection key (etd, pias/vol94/iss4)
     dc_article    optional  Digital Commons file key (etd/1124) -- the
@@ -60,11 +60,11 @@ OUTPUT
     <output>.anvl  ANVL-formatted metadata records (the format used by
                    ARK resolvers such as N2T/EZID) suitable for import.
 
-REDIRECT MANIFEST (redirects.csv)
------------------------------------
-    Every successfully-minted ARK is also appended to redirects.csv
-    (override with --redirects-manifest; disable with
-    --no-redirects-manifest) with exactly these columns:
+RESOLVE MANIFEST (resolve.csv)
+--------------------------------
+    Every successfully-minted ARK is also appended to resolve.csv, the file
+    Apache uses to resolve ARKs (override with --resolve-manifest; disable
+    with --no-resolve-manifest). It has exactly these columns:
 
         dc_path, dc_article, ark, preservica_ref, target_url, status, notes
 
@@ -72,7 +72,16 @@ REDIRECT MANIFEST (redirects.csv)
     "ark:/" prefix. "target_url" comes from the input "url" column. The
     file is append-only; a warning is printed if a dc_path/dc_article
     pair is already in it. With --push-to-gitlab both this file and the
-    master list are pushed.
+    master list are pushed to the GitLab resolver repository.
+
+    resolve.csv replaces the earlier redirects.csv (same columns). If
+    resolve.csv doesn't exist yet but redirects.csv does, its rows are
+    copied into resolve.csv the first time the script runs.
+
+    Preservica references are filled in later by match_preservica.py, which
+    reads each Preservica asset's MODS "Archival Resource Key" identifier
+    and "Location (URL)" and records the asset holding each ARK. Pass
+    --match-preservica to run that matching in the same command.
 
 MASTER LIST (RECORDKEEPING & CROSS-RUN UNIQUENESS)
 ----------------------------------------------------
@@ -91,27 +100,31 @@ MASTER LIST (RECORDKEEPING & CROSS-RUN UNIQUENESS)
     Use --no-master-list to opt out (uniqueness is then only guaranteed
     within a single run).
 
-PUSHING THE MASTER LIST TO GITLAB
+PULLING FROM AND PUSHING TO GITLAB
 ------------------------------------
-    Pass --push-to-gitlab (with --gitlab-project namespace/project) to also
-    commit the updated master list to a GitLab project after each run, via
-    the GitLab Repository Files API (creates the file on first push,
-    updates it on every push after that -- no external HTTP library
-    required).
+    Pass --push-to-gitlab to commit the updated master list and resolve.csv
+    to the GitLab resolver project after each run, via the GitLab Repository
+    Files API (creates each file on first push, updates it after that -- no
+    external HTTP library required).
+
+    Before minting, --push-to-gitlab first pulls the GitLab copies of both
+    files and merges them into the local ones: rows already in GitLab are
+    kept as they are, and local rows GitLab doesn't have yet are added. So a
+    run never mints a blade someone else minted elsewhere, and never pushes
+    an out-of-date copy over newer rows (such as Preservica references added
+    by match_preservica.py). Use --no-pull to skip this.
 
     --gitlab-project must name a specific PROJECT (repository), not a
-    GitLab group -- a group can hold several projects, so the one to write
-    to has to be named explicitly (default: rod-library/redirects, i.e.
-    https://git.uni.edu/rod-library/redirects). --gitlab-url points at the
+    GitLab group (default: rod-library/resolver, i.e.
+    https://git.uni.edu/rod-library/resolver). --gitlab-url points at the
     GitLab instance itself (default: https://git.uni.edu).
 
-    Requires a GitLab token (personal or project access token) with
-    'api' scope for the project, supplied via an environment
-    variable (default: GITLAB_TOKEN) -- never pass a token on the command
-    line. Example:
+    Requires a GitLab token (personal or project access token) with 'api'
+    scope for the project, supplied via an environment variable (default:
+    GITLAB_TOKEN) -- never pass a token on the command line. Example:
 
         export GITLAB_TOKEN=glpat-...your_token...
-        python3 generate_arks.py output --push-to-gitlab --gitlab-project rod-library/redirects
+        python3 generate_arks.py output --push-to-gitlab
 
 USAGE
 -----
@@ -122,7 +135,8 @@ USAGE
     python3 generate_arks.py output --add-checksum
     python3 generate_arks.py output --resolver https://n2t.net
     python3 generate_arks.py output --master-list /path/to/ark_master_list.csv
-    python3 generate_arks.py output --push-to-gitlab --gitlab-project rod-library/redirects
+    python3 generate_arks.py output --push-to-gitlab
+    python3 generate_arks.py output --push-to-gitlab --match-preservica   # everything in one step
     python3 generate_arks.py other_input.csv output   # override the input file
 
 Run `python3 generate_arks.py -h` for all options.
@@ -159,16 +173,23 @@ MASTER_LIST_FIELDS = (
     "identifier", "title", "source_file", "row",
 )
 
-# Redirect manifest (redirects.csv): the append-only file consumed by the
-# redirect tooling. Column order must match the manifest header exactly.
-DEFAULT_REDIRECTS_MANIFEST = "redirects.csv"
-REDIRECT_FIELDS = (
+# Resolve manifest (resolve.csv): the append-only file Apache uses to resolve
+# ARKs. Column order must match the manifest header exactly. It replaces the
+# earlier redirects.csv, which had the same columns.
+DEFAULT_RESOLVE_MANIFEST = "resolve.csv"
+LEGACY_REDIRECTS_MANIFEST = "redirects.csv"
+RESOLVE_FIELDS = (
     "dc_path", "dc_article", "ark", "preservica_ref", "target_url",
     "status", "notes",
 )
-# active     -> redirect to target_url
+REDIRECT_FIELDS = RESOLVE_FIELDS  # older name, kept for scripts that import it
+
+# GitLab project that receives resolve.csv and the master list.
+DEFAULT_GITLAB_URL = "https://git.uni.edu"
+DEFAULT_GITLAB_PROJECT = "rod-library/resolver"
+# active     -> resolve (redirect) to target_url
 # withdrawn  -> served as HTTP 410 (target_url may be blank)
-# unmatched  -> ignored by the redirect service, kept for tracking
+# unmatched  -> ignored by the resolver, kept for tracking
 REDIRECT_STATUSES = ("active", "withdrawn", "unmatched")
 
 REQUIRED_FIELDS = ("identifier", "title")
@@ -330,7 +351,7 @@ def process_row(
     blade_length: int = 10,
 ) -> dict:
     notes = []
-    routine_notes = []  # informational only; kept out of the redirect manifest
+    routine_notes = []  # informational only; kept out of the resolve manifest
     row = {k: (v or "").strip() for k, v in row.items()}
 
     if not row.get("naan"):
@@ -349,7 +370,7 @@ def process_row(
             **{f: row.get(f, "") for f in ALL_FIELDS},
         }
 
-    # Redirect-manifest status. Optional in the input; when omitted it is
+    # Resolve-manifest status. Optional in the input; when omitted it is
     # inferred: a row with a target URL is "active", otherwise "unmatched".
     redirect_status = row.get("status", "").lower()
     if not redirect_status:
@@ -428,9 +449,9 @@ def process_row(
     }
 
 
-def append_redirects_manifest(manifest_path: str, results: list[dict]) -> int:
+def append_resolve_manifest(manifest_path: str, results: list[dict]) -> int:
     """
-    Append one row per successfully-minted ARK to the redirect manifest
+    Append one row per successfully-minted ARK to the resolve manifest
     (creating it, with a header, if needed). Append-only: existing rows
     are never rewritten. The `ark` column holds the bare "NAAN/NAME" form
     (no "ark:/" prefix). Warns on stderr if a dc_path/dc_article pair is
@@ -448,7 +469,7 @@ def append_redirects_manifest(manifest_path: str, results: list[dict]) -> int:
                 seen.add((existing.get("dc_path", ""), existing.get("dc_article", "")))
 
     with open(manifest_path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=REDIRECT_FIELDS)
+        writer = csv.DictWriter(f, fieldnames=RESOLVE_FIELDS)
         if not file_exists:
             writer.writeheader()
         for r in new_rows:
@@ -473,6 +494,93 @@ def append_redirects_manifest(manifest_path: str, results: list[dict]) -> int:
     return len(new_rows)
 
 
+append_redirects_manifest = append_resolve_manifest  # older name
+
+
+def migrate_legacy_manifest(manifest_path: str) -> bool:
+    """
+    One-time move from redirects.csv to resolve.csv: if `manifest_path`
+    doesn't exist yet but a redirects.csv sits next to it, copy its rows
+    (same columns) into `manifest_path`. Returns True if it copied.
+    """
+    if os.path.exists(manifest_path):
+        return False
+    legacy = os.path.join(os.path.dirname(manifest_path) or ".", LEGACY_REDIRECTS_MANIFEST)
+    if os.path.abspath(legacy) == os.path.abspath(manifest_path) or not os.path.exists(legacy):
+        return False
+    with open(legacy, newline="", encoding="utf-8-sig") as src, \
+            open(manifest_path, "w", newline="", encoding="utf-8") as dst:
+        dst.write(src.read())
+    print(f"Copied the rows of {legacy} into {manifest_path} (resolve.csv replaces redirects.csv).")
+    return True
+
+
+def _gitlab_file_api(gitlab_url: str, project: str, path: str) -> str:
+    return (
+        f"{gitlab_url.rstrip('/')}/api/v4/projects/{urllib.parse.quote(project, safe='')}"
+        f"/repository/files/{urllib.parse.quote(path, safe='')}"
+    )
+
+
+def fetch_file_from_gitlab(
+    gitlab_url: str, project: str, path: str, branch: str, token: str,
+) -> "bytes | None":
+    """
+    The contents of `path` in the GitLab project on `branch`, or None if the
+    file (or the branch) doesn't exist yet. Raises RuntimeError on any other
+    failure, with a readable message that never contains the token.
+    """
+    req = urllib.request.Request(
+        f"{_gitlab_file_api(gitlab_url, project, path)}/raw?ref={urllib.parse.quote(branch, safe='')}",
+        headers={"PRIVATE-TOKEN": token, "User-Agent": "generate_arks.py"}, method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise RuntimeError(
+            f"download of {path} failed ({e.code}): {e.read().decode('utf-8', 'ignore')[:300]}"
+        ) from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"can't reach {gitlab_url}: {e.reason}") from e
+
+
+def _csv_rows(text: str) -> tuple[list[str], list[dict]]:
+    reader = csv.DictReader(text.splitlines())
+    return list(reader.fieldnames or []), list(reader)
+
+
+def merge_into_local(local_path: str, remote: "bytes | None", key: str = "ark") -> tuple[int, int]:
+    """
+    Merge the GitLab copy of a CSV into the local file: every GitLab row is
+    kept as it is (GitLab may hold newer values, such as a Preservica
+    reference), and local rows whose `key` GitLab doesn't have are added
+    after them. Returns (rows from GitLab, local rows added). With no GitLab
+    copy the local file is left alone.
+    """
+    if remote is None:
+        return 0, 0
+    remote_text = remote.decode("utf-8-sig")
+    remote_fields, remote_rows = _csv_rows(remote_text)
+    local_fields, local_rows = [], []
+    if os.path.exists(local_path):
+        with open(local_path, newline="", encoding="utf-8-sig") as f:
+            local_fields, local_rows = _csv_rows(f.read())
+    seen = {(r.get(key) or "").strip() for r in remote_rows}
+    extra = [r for r in local_rows if (r.get(key) or "").strip() and (r.get(key) or "").strip() not in seen]
+    fields = remote_fields + [f for f in local_fields if f not in remote_fields]
+    if not fields:
+        return 0, 0
+    with open(local_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for r in remote_rows + extra:
+            writer.writerow({k: r.get(k, "") or "" for k in fields})
+    return len(remote_rows), len(extra)
+
+
 def push_file_to_gitlab(
     file_path: str,
     gitlab_url: str,
@@ -485,7 +593,7 @@ def push_file_to_gitlab(
     """
     Create or update `dest_path` in the GitLab project `project` (a
     "namespace/project" or "group/subgroup/project" path, e.g.
-    "rod-library/redirects") on `branch` with the current contents of
+    "rod-library/resolver") on `branch` with the current contents of
     `file_path`, via the GitLab Repository Files API (stdlib-only -- no
     external HTTP library required). `gitlab_url` is the GitLab instance's
     base URL (e.g. "https://git.uni.edu").
@@ -663,51 +771,53 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--redirects-manifest",
-        default=DEFAULT_REDIRECTS_MANIFEST,
+        "--resolve-manifest", "--redirects-manifest",
+        dest="resolve_manifest",
+        default=DEFAULT_RESOLVE_MANIFEST,
         help=(
-            "Path to the append-only redirect manifest (columns: "
-            + ", ".join(REDIRECT_FIELDS)
+            "Path to the append-only resolve manifest Apache uses (columns: "
+            + ", ".join(RESOLVE_FIELDS)
             + f"). New ARKs are appended after each run. (default: "
-            f"{DEFAULT_REDIRECTS_MANIFEST})"
+            f"{DEFAULT_RESOLVE_MANIFEST}; --redirects-manifest is the older name)"
         ),
     )
     parser.add_argument(
-        "--no-redirects-manifest",
+        "--no-resolve-manifest", "--no-redirects-manifest",
+        dest="no_resolve_manifest",
         action="store_true",
-        help="Do not write or push the redirect manifest.",
+        help="Do not write or push the resolve manifest.",
     )
     parser.add_argument(
         "--gitlab-manifest-path",
         default=None,
         help=(
-            "Path within the project for the redirect manifest (default: "
-            "same filename as --redirects-manifest, at the project root)."
+            "Path within the project for the resolve manifest (default: "
+            "same filename as --resolve-manifest, at the project root)."
         ),
     )
     parser.add_argument(
         "--push-to-gitlab",
         action="store_true",
         help=(
-            "After updating the master list, push it to a GitLab project "
-            "via the GitLab Repository Files API. Requires --gitlab-project "
-            "and a token (see --gitlab-token-env). Incompatible with "
-            "--no-master-list."
+            "Pull the GitLab copies of the master list and resolve manifest "
+            "and merge them into the local files before minting, then push "
+            "both back after the run, via the GitLab Repository Files API. "
+            "Requires a token (see --gitlab-token-env)."
         ),
     )
     parser.add_argument(
         "--gitlab-url",
-        default="https://git.uni.edu",
+        default=DEFAULT_GITLAB_URL,
         help="Base URL of the GitLab instance (default: https://git.uni.edu).",
     )
     parser.add_argument(
         "--gitlab-project",
-        default="rod-library/redirects",
+        default=DEFAULT_GITLAB_PROJECT,
         help=(
             "Target project as 'namespace/project' (default: "
-            "rod-library/redirects). Note this must be a specific project, "
+            f"{DEFAULT_GITLAB_PROJECT}). Note this must be a specific project, "
             "not a group -- e.g. the 'rod-library' GROUP can hold several "
-            "projects, so a project within it (such as 'rod-library/redirects') "
+            "projects, so a project within it (such as 'rod-library/resolver') "
             "has to be named explicitly."
         ),
     )
@@ -740,7 +850,72 @@ def main() -> None:
             "or process listings."
         ),
     )
+    parser.add_argument(
+        "--no-pull",
+        action="store_true",
+        help=(
+            "With --push-to-gitlab, don't pull and merge the GitLab copies "
+            "before minting (not recommended: the push then overwrites them "
+            "with the local files)."
+        ),
+    )
+    parser.add_argument(
+        "--match-preservica",
+        action="store_true",
+        help=(
+            "After minting, run match_preservica.py on the resolve manifest: "
+            "read each Preservica asset's MODS Archival Resource Key and "
+            "Location (URL) and fill in the preservica_ref (and a target_url "
+            "where none is set) of the ARKs found. Needs the Preservica login "
+            "(PRESERVICA_* environment variables or credentials.properties)."
+        ),
+    )
     args = parser.parse_args()
+
+    gitlab_paths = {
+        "master": args.gitlab_path or os.path.basename(args.master_list),
+        "resolve": args.gitlab_manifest_path or os.path.basename(args.resolve_manifest),
+    }
+    token = os.environ.get(args.gitlab_token_env)
+
+    if not args.no_resolve_manifest:
+        migrate_legacy_manifest(args.resolve_manifest)
+
+    # Bring in what GitLab already has before minting, so blades stay unique
+    # across computers and the push never overwrites newer rows.
+    if args.push_to_gitlab and not args.no_pull:
+        if not token:
+            sys.exit(
+                f"{args.gitlab_token_env} is not set, so the GitLab copies can't be pulled "
+                "and nothing was minted. Set it (export GITLAB_TOKEN=glpat-...), or leave "
+                "off --push-to-gitlab to mint with the local files only."
+            )
+        else:
+            pulls = []
+            if not args.no_master_list:
+                pulls.append((args.master_list, gitlab_paths["master"]))
+            if not args.no_resolve_manifest:
+                pulls.append((args.resolve_manifest, gitlab_paths["resolve"]))
+            for local_path, dest_path in pulls:
+                try:
+                    remote = fetch_file_from_gitlab(
+                        args.gitlab_url, args.gitlab_project, dest_path,
+                        args.gitlab_branch, token,
+                    )
+                except RuntimeError as e:
+                    sys.exit(
+                        f"Couldn't pull {dest_path} from GitLab, so nothing was minted: {e}\n"
+                        "Check the token and --gitlab-project, or use --no-pull to run "
+                        "with the local files only."
+                    )
+                from_gitlab, local_only = merge_into_local(local_path, remote)
+                if remote is None:
+                    print(f"{dest_path} isn't in GitLab yet; it will be created by the push.")
+                else:
+                    print(
+                        f"Pulled {dest_path} from GitLab ({from_gitlab} row(s)); "
+                        f"{local_only} local row(s) not yet in GitLab kept."
+                    )
 
     rows = read_rows(args.input_csv)
     if args.no_master_list:
@@ -767,12 +942,23 @@ def main() -> None:
         print(f"Recorded {appended} new ARK(s) in master list {args.master_list}")
 
     manifest_appended = 0
-    if not args.no_redirects_manifest:
-        manifest_appended = append_redirects_manifest(args.redirects_manifest, results)
+    if not args.no_resolve_manifest:
+        manifest_appended = append_resolve_manifest(args.resolve_manifest, results)
         print(
-            f"Appended {manifest_appended} row(s) to redirect manifest "
-            f"{args.redirects_manifest}"
+            f"Appended {manifest_appended} row(s) to resolve manifest "
+            f"{args.resolve_manifest}"
         )
+
+    matched = 0
+    if args.match_preservica and not args.no_resolve_manifest:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import match_preservica
+        summary = match_preservica.run(
+            args.resolve_manifest,
+            None if args.no_master_list else args.master_list,
+            naan=args.naan,
+        )
+        matched = summary.get("updated", 0)
 
     if args.push_to_gitlab:
         # (local file, destination path in project, commit message)
@@ -781,20 +967,20 @@ def main() -> None:
         if not args.no_master_list:
             to_push.append((
                 args.master_list,
-                args.gitlab_path or os.path.basename(args.master_list),
+                gitlab_paths["master"],
                 f"Update ARK master list ({appended} new from {source_name})",
             ))
-        if not args.no_redirects_manifest:
+        if not args.no_resolve_manifest:
             to_push.append((
-                args.redirects_manifest,
-                args.gitlab_manifest_path or os.path.basename(args.redirects_manifest),
-                f"Update redirect manifest ({manifest_appended} new from {source_name})",
+                args.resolve_manifest,
+                gitlab_paths["resolve"],
+                f"Update resolve manifest ({manifest_appended} new from {source_name}"
+                + (f", {matched} Preservica reference(s) added" if matched else "") + ")",
             ))
 
-        token = os.environ.get(args.gitlab_token_env)
         if not to_push:
             print(
-                "Skipped GitLab push: both the master list and the redirect "
+                "Skipped GitLab push: both the master list and the resolve "
                 "manifest are disabled, so there is nothing to push.",
                 file=sys.stderr,
             )

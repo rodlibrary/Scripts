@@ -10,3 +10,9 @@ __pycache__/
 # Never commit rclone sign-in details or Google service account keys
 rclone.conf
 key.json
+
+# ARK working files: the copies of record live in the GitLab resolver repository
+arks/resolve.csv
+arks/redirects.csv
+arks/ark_master_list.csv
+arks/match_report.csv

@@ -6,7 +6,7 @@ Each folder has its own README with setup steps, commands and options. Open a fo
 
 | Folder | What it's for | Runs on |
 |---|---|---|
-| [**arks**](arks/) | Generate Archival Resource Keys (ARKs) and ANVL records from a CSV | Local |
+| [**arks**](arks/) | Generate Archival Resource Keys (ARKs) and publish them to the GitLab resolver (`resolve.csv`); fill in each ARK's Preservica reference from Preservica's MODS (weekly on GitHub Actions) | Local / GitHub Actions |
 | [**checksums**](checksums/) | Generate SHA-256 checksums for every file in a folder | Windows |
 | [**file_mgmt**](file_mgmt/) | Sort files into folders by name, merge PDFs per folder, remove empty folders | Windows |
 | [**google_drive**](google_drive/) | Copy Google Drive folders to archival storage with rclone, keeping file dates and a metadata manifest | HPC |
