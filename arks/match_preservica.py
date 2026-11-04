@@ -21,7 +21,7 @@ per asset). For every ARK found it looks the ARK up in resolve.csv and:
 
   * fills in preservica_ref (IO_<reference>) when it's blank;
   * fills in target_url with the asset's page in Preservica's public portal
-    (--portal-url, default https://uni.access.preservica.com/uncategorized/IO_{ref}/)
+    (--portal-url, default https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C{ref})
     when it's blank, and changes the status from "unmatched" to "active";
   * leaves rows that already have a different reference or target alone and
     reports them (--overwrite replaces them).
@@ -70,7 +70,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import generate_arks as ga  # noqa: E402  (shares the GitLab helpers and file layout)
 
-DEFAULT_PORTAL_URL = "https://uni.access.preservica.com/uncategorized/IO_{ref}/"
+DEFAULT_PORTAL_URL = "https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C{ref}"
 DEFAULT_REPORT = "match_report.csv"
 REPORT_FIELDS = ["preservica_ref", "title", "ark_blade", "location_url", "ark", "outcome", "resolve_row"]
 UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"

@@ -256,7 +256,7 @@ class MatchTest(Base):
             out = self.main(mp, "--workers", "2")
         rows = read("resolve.csv")
         r = {row["ark"]: row for row in rows}
-        portal = "https://uni.access.preservica.com/uncategorized/IO_{}/"
+        portal = "https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C{}"
         # 1 and 2 are each claimed by asset 11 as well (blade vs URL disagree), so asset 11 is a conflict only.
         self.assertEqual(r["32498/s3abc123"]["preservica_ref"], "IO_" + uid(1))
         self.assertEqual(r["32498/s3abc123"]["target_url"], portal.format(uid(1)))
