@@ -15,6 +15,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | Each month's figures for the DCDS stats Google Sheet (Preservica, Storage and DCDS tabs), as a CSV | The [*monthly stats* Postman collection](postman/README.md#monthly-stats) |
 | The month's downloads for the DCDS sheet | The [*monthly downloads* Postman collection](postman/README.md#monthly-downloads) |
 | A CSV of every asset's ARK (MODS Archival Resource Key and Location (URL)), with its Preservica reference | The [*assets with an ARK* Postman collection](postman/README.md#assets-with-an-ark) |
+| Download links for a list of ARKs | [`preservica_ark_download_urls.py`](#preservica_ark_download_urlspy) |
 | Find out why a login fails | [`check_preservica_login.py`](#check_preservica_loginpy) |
 
 ## Files
@@ -34,6 +35,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | [`credentials.properties.example`](credentials.properties.example) | Template for the login file the Python scripts read | – |
 | [`downloadCount.py`](downloadCount.py) | Counts downloads of each asset from the audit logs and writes the count into the asset's metadata | Any computer with Python 3 |
 | [`preservica_download_collection_urls.py`](preservica_download_collection_urls.py) | Lists the download link of every asset in a folder (and its subfolders) in a CSV | Any computer with Python 3 |
+| [`preservica_ark_download_urls.py`](preservica_ark_download_urls.py) | Takes a CSV of ARKs, finds each asset by the ARK in its MODS metadata and writes its download link to a CSV | Any computer with Python 3 |
 
 ## Before you start
 
@@ -209,3 +211,25 @@ python preservica_download_collection_urls.py
 ```
 
 The links need a valid Preservica login token to download anything; they aren't public links.
+
+## preservica_ark_download_urls.py
+
+Reads a CSV of ARKs and writes `ark_download_links.csv` with each ARK's asset title, Preservica reference and download link (`status` is `ok` or `not found`). It finds the asset by the ARK in its MODS `<identifier type="ark">`.
+
+**Setup (one time)**
+
+1. Put the ARKs in `arks.csv` in a column named `ark` (or change `INPUT_ARK_COLUMN`).
+2. Set `SCOPE_FOLDER_REF` at the top of the script to the folder's reference (`None` scans everything).
+
+**Run**
+
+```powershell
+python preservica_ark_download_urls.py
+```
+
+`INDEX_METHOD` chooses how the ARKs are found:
+
+- `"scan"` (default) opens every asset's MODS document. It always works but is slow on a large collection.
+- `"search"` asks Preservica's search index and is much faster, but only works if the MODS ARK is an indexed field. Find the field name in [`indexed_fields.csv`](indexed_fields.csv) (or run `python -c "from preservica_ark_download_urls import list_ark_candidate_fields; list_ark_candidate_fields()"`), set `MODS_ARK_INDEX_FIELD` to it, then set `INDEX_METHOD = "search"`.
+
+Like `downloadCount.py`, it only looks for `credentials.properties` in the folder your terminal is in, so `cd` there first. The links need a valid Preservica login token to download anything; they aren't public links.
