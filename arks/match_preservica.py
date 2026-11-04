@@ -70,6 +70,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import generate_arks as ga  # noqa: E402  (shares the GitLab helpers and file layout)
 
+if not hasattr(ga, "fetch_file_from_gitlab"):
+    sys.exit(f"The generate_arks.py next to this script ({ga.__file__}) is an older version. "
+             "Download the current one from https://github.com/rodlibrary/Scripts/tree/main/arks "
+             "into the same folder (both scripts need to be up to date).")
+
 DEFAULT_PORTAL_URL = "https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C{ref}"
 DEFAULT_REPORT = "match_report.csv"
 REPORT_FIELDS = ["preservica_ref", "title", "ark_blade", "location_url", "ark", "outcome", "resolve_row"]
