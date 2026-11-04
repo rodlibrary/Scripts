@@ -315,6 +315,19 @@ class MatchTest(Base):
         self.assertIn("IO_" + uid(2), gitlab.files["resolve.csv"])
 
 
+class HelpTest(unittest.TestCase):
+    def test_help_renders(self):
+        # Python 3.14 checks every help string when the script starts; older versions only on -h.
+        for module in (ga, mp):
+            out = io.StringIO()
+            with mock.patch.object(sys, "argv", ["x", "-h"]), contextlib.redirect_stdout(out), \
+                    self.assertRaises(SystemExit) as e:
+                module.main()
+            self.assertEqual(e.exception.code, 0)
+            self.assertIn("usage:", out.getvalue())
+        self.assertIn("sdb%3AIO%7C{ref}", out.getvalue().replace("\n", "").replace(" ", ""))
+
+
 class ArkNameTest(unittest.TestCase):
     def test_forms(self):
         self.assertEqual(mp.ark_name("ark:/32498/x7-k9q."), "x7k9q")
