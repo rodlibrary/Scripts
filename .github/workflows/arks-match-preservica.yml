@@ -1,0 +1,81 @@
+# Fills in the Preservica reference of each ARK in the GitLab resolver's
+# resolve.csv, from the ARKs in Preservica's MODS (Archival Resource Key and
+# Location (URL)), and pushes resolve.csv back when it changed. Setup steps are
+# in arks/README.md.
+#
+# This repository is public, so the log shows only counts. The per-asset match
+# report goes to the GitLab resolver repository, not to this run.
+name: ARKs - match Preservica references
+
+on:
+  schedule:
+    # Mondays at 12:23 UTC (7:23 am Central daylight time, 6:23 am standard time),
+    # after the weekly Preservica metadata export.
+    - cron: "23 12 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report only: don't change resolve.csv in GitLab"
+        type: boolean
+        default: false
+      overwrite:
+        description: "Replace a preservica_ref or target_url that differs from what Preservica says"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arks-gitlab
+  cancel-in-progress: false
+
+jobs:
+  match:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PRESERVICA_USERNAME: ${{ secrets.PRESERVICA_USERNAME }}
+      PRESERVICA_PASSWORD: ${{ secrets.PRESERVICA_PASSWORD }}
+      PRESERVICA_TENANT: ${{ secrets.PRESERVICA_TENANT }}
+      PRESERVICA_SERVER: ${{ secrets.PRESERVICA_SERVER }}
+      GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+      GITLAB_URL: ${{ vars.GITLAB_URL || 'https://git.uni.edu' }}
+      GITLAB_PROJECT: ${{ vars.GITLAB_PROJECT || 'rod-library/resolver' }}
+      GITLAB_BRANCH: ${{ vars.GITLAB_BRANCH || 'main' }}
+      PRESERVICA_PORTAL_URL: ${{ vars.PRESERVICA_PORTAL_URL }}
+      DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+      OVERWRITE: ${{ inputs.overwrite && '--overwrite' || '' }}
+
+    steps:
+      - name: Check secrets are set
+        run: |
+          missing=""
+          for name in PRESERVICA_USERNAME PRESERVICA_PASSWORD GITLAB_TOKEN; do
+            [ -z "${!name}" ] && missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Add these repository secrets (Settings > Secrets and variables > Actions > Secrets):$missing"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Self-test (offline)
+        run: python -m unittest discover -s arks/tests
+
+      - name: Check GitLab can be reached
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$GITLAB_URL/api/v4/version" || true)
+          if [ "$code" = "000" ]; then
+            echo "::error::GitHub can't reach $GITLAB_URL (it may only be reachable on campus). Run arks/match_preservica.py on a campus computer instead; see arks/README.md."
+            exit 1
+          fi
+
+      - name: Match ARKs in Preservica and update GitLab
+        working-directory: arks
+        run: python match_preservica.py --from-gitlab --push-to-gitlab --push-report $DRY_RUN $OVERWRITE
