@@ -443,7 +443,8 @@ def main() -> None:
     ap.add_argument("--naan", default=ga.DEFAULT_NAAN, help=f"only ARKs under this NAAN (default: {ga.DEFAULT_NAAN})")
     ap.add_argument("--portal-url", default=os.environ.get("PRESERVICA_PORTAL_URL") or DEFAULT_PORTAL_URL,
                     help="target_url for a matched ARK with none; {ref} is the asset's reference "
-                         f"(default: {DEFAULT_PORTAL_URL}). Use '' to leave target_url alone.")
+                         # argparse treats % in help as formatting, so the URL's %3A and %7C are doubled.
+                         f"(default: {DEFAULT_PORTAL_URL.replace('%', '%%')}). Use '' to leave target_url alone.")
     ap.add_argument("--overwrite", action="store_true",
                     help="replace a preservica_ref or target_url that differs from what Preservica says")
     ap.add_argument("--dry-run", action="store_true", help="write the report only; don't change or push resolve.csv")
