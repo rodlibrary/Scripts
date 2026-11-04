@@ -22,6 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import generate_arks as ga  # noqa: E402
 import match_preservica as mp  # noqa: E402
+import check_gitlab as cg  # noqa: E402
 
 GL = "https://git.uni.edu/api/v4/projects/rod-library%2Fresolver/repository/files/"
 PV = "https://us.preservica.com"
@@ -313,6 +314,112 @@ class MatchTest(Base):
         self.assertIn("4 ARK(s) updated", out)
         self.assertIn("4 Preservica reference(s) added", [p[2] for p in gitlab.pushes if p[1] == "resolve.csv"][0])
         self.assertIn("IO_" + uid(2), gitlab.files["resolve.csv"])
+
+
+class FakeGitLabServer:
+    """Enough of GitLab's API for check_gitlab.py."""
+    API = "https://git.uni.edu/api/v4"
+
+    def __init__(self, token="tok", level=30, can_push=True, files=("resolve.csv", "ark_master_list.csv")):
+        self.token, self.level, self.can_push = token, level, can_push
+        self.files = {f: "a,b\r\n1,2\r\n" for f in files}
+        self.branches = {"main"}
+        self.writes = []
+
+    def handle(self, req):
+        url = req.full_url
+        if not url.startswith(self.API):
+            return None
+        path = urllib.parse.unquote(url[len(self.API):].split("?")[0])
+        method = req.get_method()
+        if path == "/version":
+            raise http_error(url, 401)
+        if req.get_header("Private-token") != self.token:
+            raise http_error(url, 401)
+        proj = "/projects/rod-library/resolver"
+        if path == proj:
+            return Resp(json.dumps({"path_with_namespace": "rod-library/resolver", "default_branch": "main",
+                                    "permissions": {"project_access": {"access_level": self.level}, "group_access": None}}))
+        if path.startswith(proj + "/repository/branches"):
+            name = path[len(proj + "/repository/branches"):].strip("/")
+            if method == "POST":
+                self.branches.add(json.loads(req.data)["branch"])
+                return Resp("{}", 201)
+            if method == "DELETE":
+                self.branches.discard(name)
+                return Resp("", 204)
+            if name not in self.branches:
+                raise http_error(url, 404)
+            return Resp(json.dumps({"name": name, "protected": name == "main", "can_push": self.can_push if name == "main" else True}))
+        if path.startswith(proj + "/repository/files/"):
+            fpath = path[len(proj + "/repository/files/"):]
+            if fpath.endswith("/raw"):
+                fpath = fpath[:-4]
+                if fpath not in self.files:
+                    raise http_error(url, 404)
+                return Resp(self.files[fpath])
+            if method == "GET":
+                raise http_error(url, 404)          # the test file doesn't exist yet on the new branch
+            body = json.loads(req.data)
+            assert body["branch"] != "main", "check_gitlab.py must never write to main"
+            self.writes.append((fpath, body["branch"]))
+            return Resp("{}", 201)
+        raise http_error(url, 404)
+
+
+class CheckGitLabTest(Base):
+    def run_check(self, server, *argv):
+        out = io.StringIO()
+        with fake_net(server), mock.patch.object(sys, "argv", ["x", *argv]), contextlib.redirect_stdout(out):
+            code = cg.main()
+        return code, out.getvalue()
+
+    def test_all_checks_pass_and_main_is_untouched(self):
+        server = FakeGitLabServer()
+        code, out = self.run_check(server)
+        self.assertEqual(code, 0, out)
+        self.assertIn("with the Developer role", out)
+        self.assertIn("resolve.csv can be read (1 row(s))", out)
+        self.assertIn("the token is allowed to push to main", out)
+        self.assertIn("All checks passed", out)
+        self.assertEqual(len(server.writes), 1)
+        self.assertEqual(server.writes[0][0], "push-test.txt")
+        self.assertEqual(server.branches, {"main"})          # the temporary branch was deleted
+
+    def test_no_write(self):
+        server = FakeGitLabServer()
+        code, out = self.run_check(server, "--no-write")
+        self.assertEqual(code, 0)
+        self.assertEqual(server.writes, [])
+
+    def test_bad_token(self):
+        with mock.patch.dict(os.environ, {"GITLAB_TOKEN": "wrong"}):
+            code, out = self.run_check(FakeGitLabServer())
+        self.assertEqual(code, 1)
+        self.assertIn("GitLab rejected the token", out)
+
+    def test_protected_main_with_developer_token(self):
+        server = FakeGitLabServer(can_push=False)
+        code, out = self.run_check(server)
+        self.assertEqual(code, 1)
+        self.assertIn("isn't allowed to push to main", out)
+        self.assertIn("Maintainer role", out)
+        self.assertEqual(server.writes, [])
+
+    def test_misnamed_master_list(self):
+        code, out = self.run_check(FakeGitLabServer(files=("resolve.csv", "arks_master_list.csv")), "--no-write")
+        self.assertEqual(code, 0)
+        self.assertIn("Not on branch main: ark_master_list.csv", out)
+
+    def test_unreachable(self):
+        def down(req, timeout=None):
+            raise urllib.error.URLError("timed out")
+        out = io.StringIO()
+        with mock.patch("urllib.request.urlopen", side_effect=down), mock.patch.object(sys, "argv", ["x"]), \
+                contextlib.redirect_stdout(out):
+            self.assertEqual(cg.main(), 1)
+        self.assertIn("Can't reach https://git.uni.edu", out.getvalue())
+        self.assertIn("VPN", out.getvalue())
 
 
 class HelpTest(unittest.TestCase):

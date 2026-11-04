@@ -658,8 +658,16 @@ def push_file_to_gitlab(
         with urllib.request.urlopen(req) as resp:
             resp.read()
     except urllib.error.HTTPError as e:
+        hint = ""
+        if e.code in (401, 403):
+            hint = (
+                f" -- the token isn't allowed to push to {branch}. A protected branch "
+                "(main is protected by default) only accepts pushes from Maintainers: "
+                "create the token with the Maintainer role, or allow Developers to push "
+                "in Settings > Repository > Protected branches. check_gitlab.py tests this."
+            )
         raise RuntimeError(
-            f"push failed ({e.code}): {e.read().decode('utf-8', 'ignore')}"
+            f"push failed ({e.code}): {e.read().decode('utf-8', 'ignore')[:300]}{hint}"
         ) from e
 
     return (
