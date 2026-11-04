@@ -13,6 +13,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | Look at, download or update one record's metadata | [`preservica_metadata_api.py`](#preservica_metadata_apipy), the [*read metadata* Postman collection](postman/), or Preservica's Swagger pages ([`API_GUIDE.md`](API_GUIDE.md)) |
 | See how much storage the content uses, split into hot and cold storage | The [*storage report* Postman collection](postman/) |
 | Each month's figures for the DCDS stats Google Sheet (Preservica, Storage and DCDS tabs), as a CSV | The [*monthly stats* Postman collection](postman/README.md#monthly-stats) |
+| The month's downloads for the DCDS sheet | The [*monthly downloads* Postman collection](postman/README.md#monthly-downloads) |
 | A CSV of every asset's ARK (MODS Archival Resource Key and Location (URL)), with its Preservica reference | The [*assets with an ARK* Postman collection](postman/README.md#assets-with-an-ark) |
 | Find out why a login fails | [`check_preservica_login.py`](#check_preservica_loginpy) |
 
@@ -27,7 +28,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | [`preservica_metadata_export.py`](preservica_metadata_export.py) | Walks a folder and flattens every metadata document of every asset (MODS, Dublin Core, custom schemas) into CSV columns. Slower, but not limited to indexed fields. | Any computer with Python 3 |
 | [`preservica_metadata_api.py`](preservica_metadata_api.py) | Lists, downloads and updates one record's metadata through the Entity API | Any computer with Python 3 |
 | [`API_GUIDE.md`](API_GUIDE.md) | How to use Preservica's Swagger pages, and the requests for reading, downloading and updating metadata | – |
-| [`postman/`](postman/) | Six ready-made Postman collections: read one record, download all metadata, selected metadata to CSV, storage report (hot and cold), monthly stats for the DCDS sheet, assets with an ARK to CSV | Postman |
+| [`postman/`](postman/) | Seven ready-made Postman collections: read one record, download all metadata, selected metadata to CSV, storage report (hot and cold), monthly stats for the DCDS sheet, assets with an ARK to CSV, monthly downloads | Postman |
 | [`check_preservica_login.py`](check_preservica_login.py) | Checks the credentials file and shows exactly why a login fails | Any computer with Python 3 |
 | [`preservica_search_test.py`](preservica_search_test.py) | Tries the search several ways and shows what each returns, to find out why an export finds 0 records when the account can open them | Any computer with Python 3 |
 | [`credentials.properties.example`](credentials.properties.example) | Template for the login file the Python scripts read | – |
@@ -151,7 +152,7 @@ Add `--folder` when the reference is a folder. `update` replaces the whole metad
 
 ## Postman collections
 
-[`postman/`](postman/) has six collections that make the same requests from Postman, with step-by-step instructions built in:
+[`postman/`](postman/) has seven collections that make the same requests from Postman, with step-by-step instructions built in:
 
 - **Read metadata:** look at one folder or asset and download its metadata records.
 - **Download all metadata (export packages):** exports every top-level folder as a ZIP of XML files, with all the metadata of every asset.
@@ -159,6 +160,7 @@ Add `--folder` when the reference is a folder. `update` replaces the whole metad
 - **Storage report (hot and cold):** how much storage the content uses, by tier (Hot, Cold), by storage location (such as `S3 Deep Glacier Adapter`) and by representation, with a CSV. Preservica has no single "storage used" request, so it measures each asset's files and where they are stored.
 - **Monthly stats (for the DCDS sheet):** the month's figures laid out like the DCDS_stats Google Sheet (the Preservica rows of the DCDS tab, Tier 1 of the Storage tab, and about 45 detailed rows for the Preservica tab), with boxes to paste and a CSV.
 - **Assets with an ARK (CSV):** each asset's MODS Archival Resource Key (ARK blade) and Location (URL), with its Preservica reference, the full ARK and chosen fields.
+- **Monthly downloads:** the month's downloads for the DCDS sheet's Preservica #Downloads row, from the download counter and the event log.
 
 See [`postman/README.md`](postman/README.md) for importing them.
 

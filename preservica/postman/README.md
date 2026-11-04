@@ -1,6 +1,6 @@
 # Postman collections for Preservica
 
-Six collections for [Postman](https://www.postman.com/downloads/) that call Rod Library's Preservica (`us.preservica.com`, tenant `UNIOWA`). Each has step-by-step instructions in its **Overview** panel and a note on every request.
+Seven collections for [Postman](https://www.postman.com/downloads/) that call Rod Library's Preservica (`us.preservica.com`, tenant `UNIOWA`). Each has step-by-step instructions in its **Overview** panel and a note on every request.
 
 | Collection | What it does | Changes records? |
 |---|---|---|
@@ -10,6 +10,7 @@ Six collections for [Postman](https://www.postman.com/downloads/) that call Rod 
 | [`Preservica_storage_report`](Preservica_storage_report.postman_collection.json) | Storage used, by tier (Hot, Cold), by storage location and by representation (Preservation, Access), with a CSV. Also lists Preservica's Analytics datasets. | No |
 | [`Preservica_monthly_stats`](Preservica_monthly_stats.postman_collection.json) | The month's figures for the DCDS_stats Google Sheet: the DCDS tab's Preservica rows, the Storage tab's Tier 1 rows (Hot and Cold TB) and detailed rows for the Preservica tab, with boxes to paste and a CSV | No |
 | [`Preservica_ARK_assets_CSV`](Preservica_ARK_assets_CSV.postman_collection.json) | Every asset's MODS Archival Resource Key (ARK blade) and Location (URL), with its Preservica reference, the full ARK, whether the two agree, and chosen fields, as a CSV. Lists ARKs found in more than one asset. | No |
+| [`Preservica_monthly_downloads`](Preservica_monthly_downloads.postman_collection.json) | The month's downloads for the DCDS sheet (Preservica #Downloads), from the download counter and from the event log, with the most-downloaded assets and a CSV | No |
 
 ## Import
 
@@ -24,7 +25,7 @@ When you import a newer version, choose **Replace**, then enter the username and
 
 ## Notes
 
-- All six log in by themselves: run *1. Log in* first, and later requests log in again when the 15-minute token is about to expire or is rejected.
+- All seven log in by themselves: run *1. Log in* first, and later requests log in again when the 15-minute token is about to expire or is rejected.
 - The account sees only records it has **Read Metadata** permission for. An empty folder list or 0 results means the account needs that permission on the records' security tags.
 - The *download all metadata* collection also needs permission to export. A `403` when an export starts means the account lacks it.
 - The *selected metadata* collection keeps its results inside Postman. For tens of thousands of assets, [`preservica_search_export.py`](../preservica_search_export.py) or the scheduled GitHub export copes better.
@@ -103,3 +104,19 @@ Things to know:
 - **ARKs found in more than one asset** are listed on the report (ignoring hyphens, which carry no meaning in ARKs), since a redirect needs exactly one target.
 - `naan` (default `32498`) goes in front of a bare blade. `folderRefs` limits the run to some folders.
 - If a value is missing or wrong, send **6. Debug: one asset's MODS**. It shows an asset's MODS record (the first with an ARK, or the one in `debugAsset`), what the collection read from it, and how far the last run got.
+
+## Monthly downloads
+
+Counts the month's downloads for the DCDS tab's Preservica **#Downloads** row.
+
+1. Run it on the last day of the month or in the first five days of the next: in the first five days it counts the month that just ended. To pick a month, set `month`, such as `2026-10`.
+2. **Run collection** with requests 1 to 4 ticked, then open **4. Show the downloads** > **Visualize**.
+
+Preservica doesn't document a single downloads figure, so the collection looks in both places it can keep one, and reports both:
+
+1. **The download counter**, the indexed field `system_and_public_analytics.downloadcount` on each asset. It's an all-time count, so the month's figure is the change since last month's total. Postman saves each month's total in `downloadsHistory`, so the first month only records it; to work out that month anyway, put the previous month's total in `previousDownloadsAllTime` and send request 4 again.
+2. **The event log** for the month (`/api/entity/events`), counted by event type. Types whose names match `downloadEventPattern` (default `download|export|deliver|dissemin`) count as downloads. The report lists every event type found that month, so the first run shows which type, if any, Preservica uses for downloads.
+
+The #Downloads figure uses the download events if the month has any, otherwise the change in the counter, and the report says which. Once you know the downloads event type, put it in `eventTypeFilter` so request 3 reads only those events, which is much faster.
+
+If neither source has anything, Preservica isn't recording downloads in either place. Downloads from the public portal may then only be counted by the portal's own analytics (such as Google Analytics); ask your Preservica contact where *Universal Access* download statistics are kept. **5. Debug: show raw responses** shows both sources' raw answers.
