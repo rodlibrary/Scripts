@@ -110,7 +110,7 @@ Running the script again with the same output name overwrites `output.csv` and `
 Lists every asset in Preservica and reads its MODS record (about two requests per asset), taking the **Archival Resource Key** identifier and the **Location (URL)**. Preservica's search index keeps neither the identifier's type nor the URL, so the MODS has to be read. For each ARK found:
 
 - if `resolve.csv` has no `preservica_ref` for it, the asset's reference is filled in (`IO_<reference>`);
-- if it has no `target_url`, the asset's page in Preservica's portal is filled in (`https://uni.access.preservica.com/uncategorized/IO_<reference>/`). The status changes from `unmatched` to `active`, so Apache starts resolving it;
+- if it has no `target_url`, the asset's page in Preservica's portal is filled in (`https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C<reference>`, where `sdb%3AIO%7C` is `sdb:IO|` written for a web address). The status changes from `unmatched` to `active`, so Apache starts resolving it;
 - an existing different `preservica_ref` or `target_url` is left alone and reported, unless you use `--overwrite`;
 - `withdrawn` ARKs stay withdrawn;
 - a note records the date of the match.
