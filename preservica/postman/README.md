@@ -52,6 +52,8 @@ Things to know:
 
 Run it once a month to get the figures for the **DCDS_stats** Google Sheet, then copy them in by hand.
 
+**Faster:** [`preservica_monthly_stats.py`](../README.md#preservica_monthly_statspy) gives the same figures in a minute or two from your own computer, as a CSV and blocks to paste. The collection measures one asset per request, through Postman's Cloud Agent in the web version, so a full run of a few hundred assets takes 15 minutes or more and can stop part-way.
+
 1. Run it on the last day of the month or in the first five days of the next: in the first five days it reports the month that just ended. To pick a month, set `month` (such as `2026-10`).
 2. **Run collection** with every request ticked. Like the storage report, it makes several requests per asset, so a few hundred assets take a few minutes. Sending requests 1 to 6 one at a time also works: **5. Measure the assets** measures one asset per send (`assetsPerSend`) and carries on where it left off, so for hundreds of assets use **Run collection**, which repeats request 5 by itself. **Wait for each send to finish** before sending anything else, and send it again until its **Visualize** tab says all assets are done: Postman keeps a request's results only when its script finishes, so a send that's interrupted loses that send's progress. Request 7 shows how the last send of request 5 ended, including any script error, and the collection's version. If it shows no version, Postman is running an old copy: delete the older copies of the collection.
 3. Open **6. Show the monthly figures** and its **Visualize** tab:
