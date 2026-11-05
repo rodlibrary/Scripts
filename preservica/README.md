@@ -12,7 +12,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | Every metadata field of every asset under a folder, flattened into a CSV | [`preservica_metadata_export.py`](#preservica_metadata_exportpy) |
 | Look at, download or update one record's metadata | [`preservica_metadata_api.py`](#preservica_metadata_apipy), the [*read metadata* Postman collection](postman/), or Preservica's Swagger pages ([`API_GUIDE.md`](API_GUIDE.md)) |
 | See how much storage the content uses, split into hot and cold storage | The [*storage report* Postman collection](postman/) |
-| Each month's figures for the DCDS stats Google Sheet (Preservica, Storage and DCDS tabs), as a CSV | The [*monthly stats* Postman collection](postman/README.md#monthly-stats) |
+| Each month's figures for the DCDS stats Google Sheet (Preservica, Storage and DCDS tabs), as a CSV | [`preservica_monthly_stats.py`](#preservica_monthly_statspy) (fast: a minute or two), or the [*monthly stats* Postman collection](postman/README.md#monthly-stats) |
 | The month's downloads for the DCDS sheet | The [*monthly downloads* Postman collection](postman/README.md#monthly-downloads) |
 | A CSV of every asset's ARK (MODS Archival Resource Key and Location (URL)), with its Preservica reference | The [*assets with an ARK* Postman collection](postman/README.md#assets-with-an-ark) |
 | Download links for a list of ARKs | [`preservica_ark_download_urls.py`](#preservica_ark_download_urlspy) |
@@ -29,6 +29,8 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | [`preservica_metadata_export.py`](preservica_metadata_export.py) | Walks a folder and flattens every metadata document of every asset (MODS, Dublin Core, custom schemas) into CSV columns. Slower, but not limited to indexed fields. | Any computer with Python 3 |
 | [`preservica_metadata_api.py`](preservica_metadata_api.py) | Lists, downloads and updates one record's metadata through the Entity API | Any computer with Python 3 |
 | [`API_GUIDE.md`](API_GUIDE.md) | How to use Preservica's Swagger pages, and the requests for reading, downloading and updating metadata | – |
+| [`preservica_monthly_stats.py`](preservica_monthly_stats.py) | The month's figures for the DCDS stats sheet as a CSV and blocks to paste: the same figures as the *monthly stats* Postman collection, measured 8 assets at a time | Any computer with Python 3 |
+| [`tests/`](tests/) | Offline tests for `preservica_monthly_stats.py` (a fake Preservica) | `python -m unittest discover -s tests` |
 | [`postman/`](postman/) | Seven ready-made Postman collections: read one record, download all metadata, selected metadata to CSV, storage report (hot and cold), monthly stats for the DCDS sheet, assets with an ARK to CSV, monthly downloads | Postman |
 | [`check_preservica_login.py`](check_preservica_login.py) | Checks the credentials file and shows exactly why a login fails | Any computer with Python 3 |
 | [`preservica_search_test.py`](preservica_search_test.py) | Tries the search several ways and shows what each returns, to find out why an export finds 0 records when the account can open them | Any computer with Python 3 |
@@ -126,6 +128,41 @@ The workflow [`.github/workflows/preservica-metadata-export.yml`](../.github/wor
 **If a run finds no records**, it fails and leaves the previous CSV unchanged. The run summary shows how many records the account can see in total, how many are under the chosen folder, and how many match any `field = value` lines in `fields.txt`. `Records this account can see in total: 0` means the account needs Read Metadata (see [Before you start](#before-you-start)).
 
 **Change the schedule:** edit the `cron` line in the workflow file. GitHub uses UTC: `17 11 * * 1` means Mondays at 11:17 UTC. GitHub pauses schedules in public repositories after 60 days without activity and emails you; one click in the Actions tab turns it back on.
+
+## preservica_monthly_stats.py
+
+Measures Preservica for the month and writes the figures for the **DCDS_stats** Google Sheet. It gives the same figures as the [*monthly stats* Postman collection](postman/README.md#monthly-stats), but measures 8 assets at a time from your own computer, so a few hundred assets take a minute or two instead of a long Postman run.
+
+```powershell
+python -m pip install pyPreservica requests
+python preservica_monthly_stats.py                    # this month (in the first 5 days of a month: the month just ended)
+python preservica_monthly_stats.py --month 2026-10
+```
+
+It uses `credentials.properties` like the other scripts, and writes two files in the folder you run it from:
+
+| File | Contents |
+|---|---|
+| `preservica_stats_<YYYY-MM>.csv` | Tab, Category, Metric and the month's value for every figure, in the order of the sheet's rows |
+| `preservica_stats_<YYYY-MM>_paste.txt` | Blocks to copy into the sheet. **DCDS tab:** six values, pasted into the month's Preservica #Collections cell, filling #Collections down to #Text. **Storage tab:** two values (TB) for Tier 1. **Preservica tab:** with labels the first time, pasted at A3, or values only in later months |
+
+The figures are worked out as in the Postman collection:
+
+- Kinds (images, text, sound recordings, moving images) come from the file extension of each asset's current Preservation file.
+- Hot or Cold comes from the storage location's name.
+- TB are decimal: 2 places for the Storage tab, 4 for the Preservica tab.
+- "Added" means created in the month.
+- **#Downloads isn't included:** Preservica doesn't record downloads, so they come from the portal's Google Analytics (see [Monthly downloads](postman/README.md#monthly-downloads)).
+
+Options:
+
+- `--dcds-counts total`: all-time counts in the DCDS rows instead of what was added that month.
+- `--no-integrity`: skip the integrity-check history, a little faster.
+- `--workers`: assets measured at once, default 8.
+- `--output`: the output files' base name.
+- `--quiet`: don't print the figures.
+
+The figures are measured as of the moment it runs, so run it near the end of the month.
 
 ## preservica_metadata_export.py
 
