@@ -1,11 +1,14 @@
 # Web archiving
 
-Scripts for archiving uni.edu: find PDFs that aren't yet captured in UNI's [Archive-It](https://archive-it.org/home/uni) collections and turn the ones you approve into seed lists, and count how many web pages uni.edu has.
+Scripts for archiving uni.edu: find PDFs that aren't yet captured in UNI's [Archive-It](https://archive-it.org/home/uni) collections and turn the ones you approve into seed lists, count how many web pages uni.edu has, and report Archive-It's monthly crawl totals.
 
 | File | What it does | Runs on |
 |---|---|---|
 | [`pdf_archive_gap.py`](pdf_archive_gap.py) | Crawls uni.edu for PDF links, checks them against Archive-It, writes a review workbook and exports seed lists | Any computer with Python 3.8+ and `openpyxl` |
 | [`uni_page_count.py`](uni_page_count.py) | Counts the web pages on uni.edu and its subdomains from their sitemaps, with an optional small crawl | Any computer with Python 3.8+ (nothing to install) |
+| [`archiveit_monthly_stats.py`](archiveit_monthly_stats.py) | Totals UNI's Archive-It crawls by month (web pages, TB of data, crawls) into a CSV, from the Archive-It Partner API | Any computer with Python 3.8+ and `requests` |
+| [`archiveit_credentials.properties.example`](archiveit_credentials.properties.example) | Template for the Archive-It login file `archiveit_monthly_stats.py` reads | — |
+| [`tests/`](tests/) | Offline tests for `archiveit_monthly_stats.py` (a fake Archive-It) | `python -m unittest discover -s tests` |
 | [`example_pdf_comparison.xlsx`](example_pdf_comparison.xlsx) | A small example of the review workbook (made-up rows) showing the columns, dropdowns and highlighting | — |
 
 ## Find PDFs missing from Archive-It (`pdf_archive_gap.py`)
@@ -210,3 +213,89 @@ With `--out`, the CSV has one row per address: `url`, `host` and `status`, which
 - **Trap rules are patterns, not certainty.** A real page can occasionally look like a trap (or the reverse). Check the examples in Terminal, and use `--include-traps` to see the count with sitemap-listed trap addresses included.
 - **Query strings are merged.** `page?id=1` and `page?id=2` count as one page unless you add `--keep-query`.
 - For an exact count, ask the web team for a report from the content management system.
+
+## Monthly Archive-It statistics (`archiveit_monthly_stats.py`)
+
+Totals UNI's Archive-It crawls by month (how many crawls ran, how many web pages were archived, and how much data in TB) and writes one row per month to a CSV, with a `TOTAL` row at the end. Useful for monthly reports and for tracking the Archive-It data budget.
+
+### How it works
+
+1. **Log in.** Uses an Archive-It login for UNI's account, and finds the account ID from that login.
+2. **Read the crawls.** Asks the [Archive-It Partner API](https://support.archive-it.org/hc/en-us/articles/360032747311-Access-your-account-with-the-Archive-It-Partner-API) (`crawl_job` table) for every crawl in the account, with its document and data counts. These are the same figures as the crawl reports in the Archive-It web app.
+3. **Total by month.** Each crawl counts in the month it **started** (or finished, with `--date-field end`). Test crawls are left out unless they were saved. Months with no crawls get a row of zeros.
+4. **Stored WARCs (optional).** With `--wasapi` it also adds up the size of the WARC files stored for each month, through [WASAPI](https://support.archive-it.org/hc/en-us/articles/360015225051).
+
+### Install
+
+```powershell
+python -m pip install requests
+```
+
+### Log in
+
+1. Copy `archiveit_credentials.properties.example` to `archiveit_credentials.properties` in the folder you run the script from.
+2. Open it in Notepad and fill in an Archive-It username and password for UNI's account.
+
+`archiveit_credentials.properties` is listed in `.gitignore`, so it is never committed. Keep it private. Instead of the file, you can set the `ARCHIVEIT_USER` and `ARCHIVEIT_PASS` environment variables; they take priority over the file:
+
+```powershell
+$env:ARCHIVEIT_USER = "your_username"
+$env:ARCHIVEIT_PASS = "your_password"
+```
+
+### Run
+
+```powershell
+python archiveit_monthly_stats.py --month 2026-10                  # one month
+python archiveit_monthly_stats.py --start 2026-01 --end 2026-12    # a range of months
+python archiveit_monthly_stats.py                                  # the account's whole history
+python archiveit_monthly_stats.py --start 2026-01 --by-collection  # one row per collection per month
+```
+
+| Option | Meaning | Default |
+|---|---|---|
+| `--month` | A single month, `YYYY-MM` | — |
+| `--start` / `--end` | First and last month to include, `YYYY-MM` (both included) | The whole history |
+| `--account` | Archive-It account ID, if it can't be found from the login (it's the number in the Archive-It web app's addresses) | Found from the login |
+| `--date-field` | `start`: count each crawl in the month it started. `end`: the month it finished (crawls still running are left out) | `start` |
+| `--include-tests` | Also count test crawls that weren't saved | Off |
+| `--by-collection` | One row per collection per month, with the collection's name | Off |
+| `--wasapi` | Add the size of the WARC files stored each month (slower) | Off |
+| `-o`, `--output` | The CSV file to write | `archiveit_monthly_stats.csv` |
+
+### Output
+
+One row per month (per collection with `--by-collection`), then a `TOTAL` row:
+
+| Column | Meaning |
+|---|---|
+| `month` | `YYYY-MM` |
+| `collection_id`, `collection_name` | Only with `--by-collection` |
+| `crawls` | Crawls counted in the month |
+| `documents_new` | Web pages and other documents archived for the first time, or changed since the last crawl |
+| `documents_duplicate` | Documents captured again unchanged (recorded, but not stored again) |
+| `documents_total` | New plus duplicate |
+| `urls_discovered` | Addresses the crawler found |
+| `urls_queued` | Addresses still waiting when the crawl stopped (e.g. at its time or data limit) |
+| `download_failures` | Addresses that couldn't be downloaded |
+| `new_data_bytes`, `new_data_GB`, `new_data_TB` | Size of the new documents |
+| `total_data_TB` | Size of new plus duplicate documents |
+| `warc_compressed_bytes`, `warc_compressed_TB` | Size of the compressed WARC files written: the storage used |
+| `wasapi_stored_bytes`, `wasapi_stored_TB` | Only with `--wasapi` (not with `--by-collection`): size of the WARC files stored for crawls that started that month |
+
+TB and GB are decimal (1 TB = 1,000,000,000,000 bytes), as Archive-It uses for data budgets.
+
+### Tests
+
+```powershell
+python -m unittest discover -s tests
+```
+
+They run against a fake Archive-It, so they need no login or network.
+
+### Limitations
+
+- **Only accounts you can log in to.** The Partner API needs an Archive-It login; the public pages on archive-it.org don't give these figures.
+- **Figures are the crawl reports' figures.** If a column is all zeros, Archive-It may have renamed the field: compare a month with the crawl reports in the Archive-It web app.
+- **A crawl counts in one month.** A crawl that runs across the end of a month is counted in the month it started (or finished, with `--date-field end`), not split.
+- **Rate limits.** If Archive-It answers *429 Too Many Requests*, wait a few minutes and run it again.
