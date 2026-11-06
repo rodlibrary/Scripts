@@ -20,7 +20,7 @@ Each folder has its own README with setup steps, commands and options. Open a fo
 | [**transcription**](transcription/) | Speech to text with Whisper / WhisperX (with speaker labels) | HPC |
 | [**video**](https://github.com/rodlibrary/video_pipeline) | Multi-stage AV collection pipeline: transcripts, keyframes, AI descriptions and discovery outputs. Lives in its own repository, [rodlibrary/video_pipeline](https://github.com/rodlibrary/video_pipeline) | Local / HPC |
 | [**virus_scan**](virus_scan/) | Scan a folder with Microsoft Defender and export detections to CSV | Windows |
-| [**web_archiving**](web_archiving/) | Find uni.edu PDFs missing from Archive-It, review them in Excel and export seed lists for Archive-It; count the web pages on uni.edu | Local |
+| [**web_archiving**](web_archiving/) | Find uni.edu PDFs missing from Archive-It, review them in Excel and export seed lists for Archive-It; count the web pages on uni.edu; report Archive-It's monthly totals (crawls, web pages, TB) as a CSV | Local |
 
 ## Getting started
 

@@ -16,3 +16,7 @@ arks/resolve.csv
 arks/redirects.csv
 arks/ark_master_list.csv
 arks/match_report.csv
+
+# Never commit Archive-It login details
+archiveit_credentials.properties
+archiveit_credentials.properties.txt
