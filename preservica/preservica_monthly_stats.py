@@ -22,17 +22,23 @@ What it measures (everything the account can see):
 Downloads aren't recorded in Preservica: they come from the public portal's
 Google Analytics (see preservica/postman/README.md, "Monthly downloads").
 
-It writes, in the folder you run it from:
-  * preservica_stats_<YYYY-MM>.csv: Tab, Category, Metric and the month's value
-    for every figure, in the order of the sheet's rows;
-  * preservica_stats_<YYYY-MM>_paste.txt: blocks to paste into the sheet: the
-    DCDS tab's Preservica rows, the Storage tab's Tier 1 rows, and the
-    Preservica tab (labels + value in the month's column, and values only).
+It lines the figures up with the rows of the sheet's Preservica tab, so each
+month is two pastes: one block into the Preservica tab and one into the Storage
+tab, both at the month's cell in row 3. When run in a terminal it puts each
+block on the clipboard in turn and says where to paste it.
+
+It also writes, in the folder you run it from:
+  * preservica_stats_<YYYY-MM>.csv: every figure (Tab, Category, Metric, value);
+  * preservica_stats_<YYYY-MM>_paste.txt: the two blocks, plus any figures with
+    no row in the sheet (a new file type or collection) and any rows left blank.
+
+The Preservica tab's rows are built in (PRESERVICA_TAB below). If you change
+them, download the tab as a CSV and pass it with --layout.
 
 Usage
     python preservica_monthly_stats.py                  # this month (the month just ended, in the first 5 days)
     python preservica_monthly_stats.py --month 2026-10
-    python preservica_monthly_stats.py --dcds-counts total   # all-time counts for the DCDS rows
+    python preservica_monthly_stats.py --layout "DCDS_stats_2026 - Preservica.csv"
 
 Needs:  pip install pyPreservica requests
 Preservica login: credentials.properties (or PRESERVICA_* environment
@@ -457,98 +463,226 @@ def measure(p, month_start, month_end, cold_pattern, integrity=True, workers=4):
 
 # --------------------------------------------------------------------------- figures for the sheet
 
-FLOW, SNAPSHOT = "flow", "snapshot"     # how the Totals column treats a row
-
-
 def tb(n):
     return round(n / TB, 4)
 
 
-def tb2(n):
-    return round(n / TB, 2)
+# The sheet's names for the top-level folders (TBByCollection rows such as #TBIR).
+# Any other folder gets its initials.
+COLLECTION_CODES = {
+    "Institutional Repository": "IR",
+    "Special Collections & University Archives": "SCUA",
+    "Museum": "UNIM",
+}
+# The sheet's FormatGroups names for Preservica's format groups.
+FORMAT_GROUP_NAMES = {"Images": "StillImages", "Text": "Text", "SoundRecordings": "Audio",
+                      "MovingImages": "MovingImages", "Other": "Other"}
 
 
-def preservica_rows(m):
-    """[(category, metric, value, kind)] for the Preservica tab. value None = leave blank."""
+def collection_code(title):
+    if title in COLLECTION_CODES:
+        return COLLECTION_CODES[title]
+    words = [w for w in re.findall(r"[A-Za-z0-9]+", title or "") if w.lower() not in ("and", "of", "the")]
+    return "".join(w[0].upper() for w in words) or "Other"
+
+
+def figures(m):
+    """
+    [(category, metric, value)] for the Preservica tab, named as in the sheet.
+    value None = not known (left blank).
+    """
     s, added_ok = m["s"], m["created_known"]
     a = lambda v: v if added_ok else None
-    rows = [
-        ("Content", "#Collections", len(m["collections"]), SNAPSHOT),
-        ("Content", "#CollectionsAdded", a(m["collections_added"]), FLOW),
-        ("Content", "#Folders", m["folder_count"], SNAPSHOT),
-        ("Content", "#Assets", s["assets"], SNAPSHOT),
-        ("Content", "#AssetsAdded", a(s["assets_added"]), FLOW),
-        ("Content", "#Files", s["files"], SNAPSHOT),
-    ]
-    for kind, _ in KINDS + [("Other", None)]:
-        rows.append(("AssetsByKind", f"#{kind}", m["kinds"][kind], SNAPSHOT))
-    for kind, _ in KINDS + [("Other", None)]:
-        rows.append(("AssetsAddedByKind", f"#{kind}Added", a(m["kinds_added"][kind]), FLOW))
-    rows += [
-        ("Storage", "#TBStored", tb(s["stored"]), SNAPSHOT),
-        ("Storage", "#TBHot", tb(s["hot"]), SNAPSHOT),
-        ("Storage", "#TBCold", tb(s["cold"]), SNAPSHOT),
-        ("Storage", "#TBContent", tb(s["content"]), SNAPSHOT),
-        ("Storage", "#TBAdded", tb(s["added_bytes"]) if added_ok else None, FLOW),
-        ("Storage", "#TBPreservation", tb(s["rep:Preservation"]), SNAPSHOT),
-        ("Storage", "#TBAccess", tb(s["rep:Access"]), SNAPSHOT),
-        ("Storage", "#TBCurrentGenerations", tb(s["active"]), SNAPSHOT),
-        ("Storage", "#TBOlderGenerations", tb(s["older"]), SNAPSHOT),
-        ("Storage", "#TBOriginalFiles", tb(s["original"]), SNAPSHOT),
-        ("Storage", "#TBMigratedFiles", tb(s["migrated"]), SNAPSHOT),
-        ("Storage", "#TBDuplicates", tb(s["dup_bytes"]), SNAPSHOT),
-        ("Storage", "#DuplicateFiles", s["dup_files"], SNAPSHOT),
-        ("Tiers", "#FilesHotOnly", s["files_hot_only"], SNAPSHOT),
-        ("Tiers", "#FilesColdOnly", s["files_cold_only"], SNAPSHOT),
-        ("Tiers", "#FilesHotAndCold", s["files_both"], SNAPSHOT),
-        ("Tiers", "#FilesNoStorageLocation", s["files_nowhere"], SNAPSHOT),
-    ]
+    kinds = [k for k, _ in KINDS] + ["Other"]
+    rows = [("Content", "#Collections", len(m["collections"])),
+            ("Content", "#Folders", m["folder_count"]),
+            ("Content", "#Assets", s["assets"]),
+            ("Content", "#Files", s["files"])]
+    rows += [("AssetsByKind", f"#{k}", m["kinds"][k]) for k in kinds]
+    rows += [("Additions", "#CollectionsAdded", a(m["collections_added"])),
+             ("Additions", "#AssetsAdded", a(s["assets_added"]))]
+    rows += [("AssetsAddedByKind", f"#{k}Added", a(m["kinds_added"][k])) for k in kinds]
+    rows += [("Storage", label, value) for label, value in (
+        ("#TBStored", tb(s["stored"])), ("#TBHot", tb(s["hot"])), ("#TBCold", tb(s["cold"])),
+        ("#TBContent", tb(s["content"])), ("#TBAdded", tb(s["added_bytes"]) if added_ok else None),
+        ("#TBPreservation", tb(s["rep:Preservation"])), ("#TBAccess", tb(s["rep:Access"])),
+        ("#TBCurrentGenerations", tb(s["active"])), ("#TBOlderGenerations", tb(s["older"])),
+        ("#TBOriginalFiles", tb(s["original"])), ("#TBMigratedFiles", tb(s["migrated"])),
+        ("#TBDuplicates", tb(s["dup_bytes"])), ("#DuplicateFiles", s["dup_files"]))]
+    rows += [("Tiers", "#FilesHotOnly", s["files_hot_only"]), ("Tiers", "#FilesColdOnly", s["files_cold_only"]),
+             ("Tiers", "#FilesHotAndCold", s["files_both"]), ("Tiers", "#FilesNoStorageLocation", s["files_nowhere"])]
     for loc in sorted(m["by_location"]):
         tier = "Cold" if m["cold_re"].search(loc) else "Hot"
-        rows.append(("StorageLocations", f"#TB {loc} ({tier})", tb(m["by_location"][loc]), SNAPSHOT))
-    for col in sorted(m["by_collection"]):
-        rows.append(("TBByCollection", f"#TB {col}", tb(m["by_collection"][col]), SNAPSHOT))
-    for tag in sorted(m["by_tag"]):
-        rows.append(("SecurityTags", f"#Assets {tag}", m["by_tag"][tag], SNAPSHOT))
+        rows.append(("StorageLocations", f"#TB {loc} ({tier})", tb(m["by_location"][loc])))
+    by_code = Counter()
+    for title, size in m["by_collection"].items():
+        by_code[collection_code(title)] += size
+    rows += [("TBByCollection", f"#TB{code}", tb(by_code[code])) for code in sorted(by_code)]
+    rows += [("SecurityTags", f"#Assets {tag}", m["by_tag"][tag]) for tag in sorted(m["by_tag"])]
     label = lambda prefix, e: f"{prefix} .{e}" if not e.startswith("(") else f"{prefix} {e}"
-    for e in sorted(m["by_ext"]):
-        rows.append(("AssetsByFileType", label("#Assets", e), m["by_ext"][e], SNAPSHOT))
-    for e in sorted(m["ext_files"]):
-        rows.append(("FilesByFileType", label("#Files", e), m["ext_files"][e], SNAPSHOT))
-    for e in sorted(m["ext_bytes"]):
-        rows.append(("TBByFileType", label("#TB", e), tb(m["ext_bytes"][e]), SNAPSHOT))
-    for g in sorted(m["by_group"]):
-        rows.append(("FormatGroups", f"#Assets {g} ({kind_of(g if g != '(none)' else '')})",
-                     m["by_group"][g], SNAPSHOT))
+    rows += [("AssetsByFileType", label("#Assets", e), m["by_ext"][e]) for e in sorted(m["by_ext"])]
+    rows += [("FilesByFileType", label("#Files", e), m["ext_files"][e]) for e in sorted(m["ext_files"])]
+    rows += [("TBByFileType", label("#TB", e), tb(m["ext_bytes"][e])) for e in sorted(m["ext_bytes"])]
+    groups = Counter()
+    for g, n in m["by_group"].items():
+        groups[FORMAT_GROUP_NAMES[kind_of(g if g != "(none)" else "")]] += n
+    rows += [("FormatGroups", f"#{name}", groups[name]) for name in ("StillImages", "Text", "Audio", "MovingImages")]
+    if groups["Other"]:
+        rows.append(("FormatGroups", "#Other", groups["Other"]))
     if m["integrity"]:
-        rows += [
-            ("Integrity", "#FilesCheckedThisMonth", s["checked"], FLOW),
-            ("Integrity", "#FilesFailedLastCheck", s["failed"], SNAPSHOT),
-            ("Integrity", "#FilesNeverChecked", s["never_checked"], SNAPSHOT),
-        ]
+        rows += [("Integrity", "#FilesCheckedThisMonth", s["checked"]),
+                 ("Integrity", "#FilesFailedLastCheck", s["failed"]),
+                 ("Integrity", "#FilesNeverChecked", s["never_checked"])]
     return rows
 
 
-def dcds_rows(prows, mode):
-    get = {(c, k): v for c, k, v, _ in prows}
-    added = mode == "added"
-    pick = lambda c, k_added, c_total, k_total: get.get((c, k_added)) if added else get.get((c_total, k_total))
-    return [
-        ("Preservica", "#Collections", pick("Content", "#CollectionsAdded", "Content", "#Collections")),
-        ("Preservica", "#Assets", pick("Content", "#AssetsAdded", "Content", "#Assets")),
-        ("Preservica", "#Images", pick("AssetsAddedByKind", "#ImagesAdded", "AssetsByKind", "#Images")),
-        ("Preservica", "#SoundRecordings", pick("AssetsAddedByKind", "#SoundRecordingsAdded",
-                                                "AssetsByKind", "#SoundRecordings")),
-        ("Preservica", "#MovingImages", pick("AssetsAddedByKind", "#MovingImagesAdded",
-                                             "AssetsByKind", "#MovingImages")),
-        ("Preservica", "#Text", pick("AssetsAddedByKind", "#TextAdded", "AssetsByKind", "#Text")),
-    ]
+def storage_figures(m):
+    """The Storage tab's Tier 1 rows (TB, 4 decimals as the tab shows them)."""
+    return [("Tier 1", "#TBPreservicaHot", tb(m["s"]["hot"])),
+            ("Tier 1", "#TBPreservicaCold", tb(m["s"]["cold"]))]
 
 
-def storage_rows(m):
-    """TB with 2 decimals, as the Storage tab shows them."""
-    return [("Tier 1", "#TBPreservicaHot", tb2(m["s"]["hot"])),
-            ("Tier 1", "#TBPreservicaCold", tb2(m["s"]["cold"]))]
+# --------------------------------------------------------------------------- the sheet's layout
+
+# The Preservica tab's rows from row 3 down (Category, Metric; a blank line = a blank row).
+# If you add, remove or rename rows in the sheet, download the tab as a CSV
+# (File > Download > Comma-separated values, with the Preservica tab open) and
+# run the script with --layout <that file>, or update this list.
+PRESERVICA_TAB = """
+Content,#Collections
+,#Folders
+,#Assets
+,#Files
+
+AssetsByKind,#Images
+,#SoundRecordings
+,#MovingImages
+,#Text
+,#Other
+
+Additions,#CollectionsAdded
+,#AssetsAdded
+
+AssetsAddedByKind,#ImagesAdded
+,#SoundRecordingsAdded
+,#MovingImagesAdded
+,#TextAdded
+,#OtherAdded
+
+Storage,#TBStored
+,#TBHot
+,#TBCold
+,#TBContent
+,#TBAdded
+,#TBPreservation
+,#TBAccess
+,#TBCurrentGenerations
+,#TBOlderGenerations
+,#TBOriginalFiles
+,#TBMigratedFiles
+,#TBDuplicates
+,#DuplicateFiles
+
+Tiers,#FilesHotOnly
+,#FilesColdOnly
+,#FilesHotAndCold
+,#FilesNoStorageLocation
+
+StorageLocations,#TB Primary Adapter (Hot)
+,#TB S3 Deep Glacier Adapter (Cold)
+
+TBByCollection,#TBIR
+,#TBSCUA
+
+SecurityTags,#Assets open
+
+AssetsByFileType,#Assets .jpg
+,#Assets .pdf
+,#Assets .png
+
+FilesByFileType,#Files .jpg
+,#Files .pdf
+,#Files .png
+,#Files .tiff
+
+TBByFileType,#TB .jpg
+,#TB .pdf
+,#TB .png
+,#TB .tiff
+
+FormatGroups,#StillImages
+,#Text
+,#Audio
+,#MovingImages
+
+Integrity,#FilesCheckedThisMonth
+,#FilesFailedLastCheck
+,#FilesNeverChecked
+
+Use,#Downloads
+"""
+FIRST_ROW = 3          # the tabs' first metric row (row 1 = months, row 2 = Category / Metric)
+
+
+def parse_layout(text, from_sheet_csv=False):
+    """
+    [(category, metric)] per sheet row from FIRST_ROW down; ("", "") = a blank row.
+    A blank category carries the one above it down, as in the sheet.
+    """
+    import csv
+    import io
+    rows = list(csv.reader(io.StringIO(text.strip("\n") if not from_sheet_csv else text)))
+    if from_sheet_csv:
+        # A CSV downloaded from the tab: row 1 = months, row 2 = Category, Metric.
+        start = next((i + 1 for i, r in enumerate(rows[:5]) if [c.strip().lower() for c in r[:2]] == ["category", "metric"]),
+                     None)
+        if start is None:
+            sys.exit("The layout CSV should be the Preservica tab downloaded as CSV (row 2 = Category, Metric).")
+        rows = rows[start:]
+    layout, category = [], ""
+    for r in rows:
+        c, metric = ((r + ["", ""])[:2])
+        c, metric = c.strip(), metric.strip()
+        if not c and not metric:
+            layout.append(("", ""))
+            continue
+        category = c or category
+        layout.append((category, metric))
+    while layout and layout[-1] == ("", ""):
+        layout.pop()
+    return layout
+
+
+def norm(text):
+    return re.sub(r"\s+", " ", text or "").strip().lower()
+
+
+def align(rows, layout):
+    """
+    Line the figures up with the sheet's rows.
+    Returns (values per layout row, figures with no row in the sheet, sheet rows with no figure).
+    """
+    by_key = {(norm(c), norm(m)): v for c, m, v in rows}
+    values, used, unfilled = [], set(), []
+    for c, metric in layout:
+        key = (norm(c), norm(metric))
+        if not metric:
+            values.append(None)
+        elif key in by_key:
+            values.append(by_key[key])
+            used.add(key)
+        else:
+            values.append(None)
+            unfilled.append((c, metric))
+    extra = [(c, m, v) for c, m, v in rows if (norm(c), norm(m)) not in used]
+    return values, extra, unfilled
+
+
+def column_block(values):
+    """The values as lines for one paste, from the first row to the last row with a value.
+    Stopping there keeps a paste from blanking rows filled in by hand below it (#Downloads)."""
+    last = max((i for i, v in enumerate(values) if v is not None), default=-1)
+    return "\n".join(value_text(v) for v in values[:last + 1])
 
 
 # --------------------------------------------------------------------------- output
@@ -557,49 +691,70 @@ def value_text(v):
     return "" if v is None else str(v)
 
 
-def write_outputs(base, month_name, year, month, prows, srows, drows, dcds_counts):
-    """The CSV and the paste file. Returns their names."""
+def col_letter(month):
+    return chr(ord("B") + month)            # January = C, October = L
+
+
+def write_outputs(base, month_name, year, month, rows, srows, pblock, sblock, extra, unfilled):
+    """The CSV of every figure and the paste file. Returns their names."""
     import csv
     csv_path, paste_path = f"{base}.csv", f"{base}_paste.txt"
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["Tab", "Category", "Metric", f"{month_name} {year}"])
         last = None
-        for tab, rows in (("DCDS", drows), ("Storage", srows), ("Preservica", [r[:3] for r in prows])):
-            for cat, metric, v in rows:
+        for tab, tab_rows in (("Storage", srows), ("Preservica", rows)):
+            for cat, metric, v in tab_rows:
                 w.writerow([tab, cat if (tab, cat) != last else "", metric, value_text(v)])
                 last = (tab, cat)
-    blank_cols = "\t" * (month - 1)            # January is column C: pad to the month's column
+    cell = f"{col_letter(month)}{FIRST_ROW}"
     with open(paste_path, "w", encoding="utf-8") as f:
-        f.write(f"Preservica figures for {month_name} {year}. Copy a block (not its heading) and paste it into the sheet.\n\n")
-        f.write(f"== DCDS tab: click the {month_name} cell of the Preservica #Collections row, then paste "
-                f"({'added that month' if dcds_counts == 'added' else 'all-time totals'}; "
-                "#Downloads comes from Google Analytics)\n")
-        f.write("\n".join(value_text(v) for _, _, v in drows) + "\n\n")
-        f.write(f"== Storage tab: click the {month_name} cell of the Tier 1 #TBPreservicaHot row, then paste (TB)\n")
-        f.write("\n".join(value_text(v) for _, _, v in srows) + "\n\n")
-        f.write(f"== Preservica tab, FIRST TIME only (empty tab): click cell A3, then paste. It fills in the "
-                f"labels and puts the values in the {month_name} column\n")
-        last = None
-        for cat, metric, v, _ in prows:
-            f.write(f"{cat if cat != last else ''}\t{metric}\t{blank_cols}{value_text(v)}\n")
-            last = cat
-        f.write(f"\n== Preservica tab, later months: if the labels match the tab's rows, click the {month_name} "
-                "cell of the Content #Collections row, then paste\n")
-        f.write("\n".join(value_text(v) for _, _, v, _ in prows) + "\n")
+        f.write(f"Preservica figures for {month_name} {year}: two pastes.\n\n")
+        f.write(f"== 1. Preservica tab: click cell {cell} ({month_name}, Content #Collections) and paste these lines\n")
+        f.write(pblock + "\n\n")
+        f.write(f"== 2. Storage tab: click cell {cell} ({month_name}, Tier 1 #TBPreservicaHot) and paste these lines\n")
+        f.write(sblock + "\n")
+        if extra:
+            f.write("\n== Figures with no row in the Preservica tab (add a row for any you want to keep)\n")
+            f.write("\n".join(f"{c}\t{m}\t{value_text(v)}" for c, m, v in extra) + "\n")
+        if unfilled:
+            f.write("\n== Rows in the Preservica tab with no figure this month (left blank)\n")
+            f.write("\n".join(f"{c}\t{m}" for c, m in unfilled) + "\n")
     return csv_path, paste_path
 
 
+def copy_to_clipboard(text):
+    """Put text on the clipboard. Returns True if it worked."""
+    import shutil
+    import subprocess
+    commands = []
+    if sys.platform.startswith("win"):
+        commands.append(["clip"])
+    elif sys.platform == "darwin":
+        commands.append(["pbcopy"])
+    else:
+        commands += [c for c in (["wl-copy"], ["xclip", "-selection", "clipboard"]) if shutil.which(c[0])]
+    for cmd in commands:
+        try:
+            # The blocks hold only numbers, so plain text is safe; Windows wants CRLF line ends.
+            data = (text.replace("\n", "\r\n") if cmd == ["clip"] else text).encode("utf-8")
+            subprocess.run(cmd, input=data, check=True)
+            return True
+        except (OSError, subprocess.CalledProcessError):
+            continue
+    return False
+
+
 def report_month(arg):
-    """The month being reported, as (year, month). Late-night runs on the 1st count as last month."""
+    """The month being reported, as (year, month). In the first 5 days of a month: the month just ended."""
     if arg:
         m = re.fullmatch(r"(\d{4})-(\d{1,2})", arg.strip())
         if not m or not 1 <= int(m[2]) <= 12:
             sys.exit("--month should look like 2026-10.")
         return int(m[1]), int(m[2])
     now = dt.datetime.now(ZoneInfo("America/Chicago")) if ZoneInfo else dt.datetime.now()
-    if now.day == 1 and now.hour < 6:
-        now -= dt.timedelta(hours=7)
+    if now.day <= 5:
+        now = now.replace(day=1) - dt.timedelta(days=1)
     return now.year, now.month
 
 
@@ -607,19 +762,25 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--month", help="Month to report, e.g. 2026-10. Default: this month (the month just "
                                     "ended, in the first 5 days of a month).")
-    ap.add_argument("--dcds-counts", choices=["added", "total"], default="added",
-                    help="DCDS Preservica rows: what was added that month (default) or all-time totals.")
+    ap.add_argument("--layout", help="The Preservica tab downloaded as CSV, if its rows differ from the "
+                                     "built-in layout.")
     ap.add_argument("--cold-pattern", default=DEFAULT_COLD,
                     help=f"Storage locations whose names match count as Cold (default: {DEFAULT_COLD}).")
     ap.add_argument("--no-integrity", action="store_true",
                     help="Skip the integrity-check history (one request fewer per file; a little faster).")
     ap.add_argument("--workers", type=int, default=8, help="Assets measured at once (default 8).")
     ap.add_argument("--output", help="Base name for the output files (default: preservica_stats_<YYYY-MM>).")
-    ap.add_argument("--quiet", action="store_true", help="Don't print the figures.")
+    ap.add_argument("--no-clipboard", action="store_true", help="Don't offer to copy the blocks to the clipboard.")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(message)s")
     logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+    if args.layout:
+        with open(args.layout, encoding="utf-8-sig") as f:
+            layout = parse_layout(f.read(), from_sheet_csv=True)
+    else:
+        layout = parse_layout(PRESERVICA_TAB)
 
     year, month = report_month(args.month)
     month_name = MONTHS[month - 1]
@@ -635,18 +796,13 @@ def main():
     m = measure(p, month_start, month_end, args.cold_pattern, integrity=not args.no_integrity,
                 workers=args.workers)
 
-    prows = preservica_rows(m)
-    drows = dcds_rows(prows, args.dcds_counts)
-    srows = storage_rows(m)
+    rows, srows = figures(m), storage_figures(m)
+    values, extra, unfilled = align(rows, layout)
+    pblock = column_block(values)
+    sblock = "\n".join(value_text(v) for _, _, v in srows)
     base = args.output or f"preservica_stats_{year}-{month:02d}"
-    csv_path, paste_path = write_outputs(base, month_name, year, month, prows, srows, drows, args.dcds_counts)
+    csv_path, paste_path = write_outputs(base, month_name, year, month, rows, srows, pblock, sblock, extra, unfilled)
 
-    if not args.quiet:
-        for title, rows in ((f"DCDS tab, Preservica rows ({args.dcds_counts})", drows),
-                            ("Storage tab, Tier 1 (TB)", srows), ("Preservica tab", [r[:3] for r in prows])):
-            print(f"\n== {title}, {month_name} {year}")
-            for r in rows:
-                print(f"  {r[0]:<20} {r[1]:<45} {value_text(r[2])}")
     refused = {k: n for k, n in p.status.items() if k[1] != 200}
     for (kind, code), n in sorted(refused.items(), key=str):
         log.warning("%d %s request(s) got %s from Preservica", n, kind, f"HTTP {code}" if code else "no answer")
@@ -654,8 +810,28 @@ def main():
         log.warning("Asset %s couldn't be measured: %s", ref, problem)
     if any(code in (401, 403) for _, code in refused):
         log.warning("HTTP 401/403: the account needs the Access functional role with Read Metadata and Read Content.")
-    log.info("\n%d assets measured in %.0f s. Wrote %s and %s.", m["s"]["assets"], time.time() - started,
-             csv_path, paste_path)
+    print(f"\n{m['s']['assets']} assets measured in {time.time() - started:.0f} s. Wrote {csv_path} and {paste_path}.")
+    if extra:
+        print(f"\n{len(extra)} figure(s) have no row in the Preservica tab, so they're not in the paste "
+              "(add a row in the sheet, then run again with --layout, to include them):")
+        for c, metric, v in extra:
+            print(f"  {c:<18} {metric:<40} {value_text(v)}")
+    if unfilled:
+        print("\nRows left blank (nothing measured for them this month): "
+              + ", ".join(f"{c} {mt}" for c, mt in unfilled))
+
+    cell = f"{col_letter(month)}{FIRST_ROW}"
+    steps = [(f"Preservica tab: click cell {cell} ({month_name}, Content #Collections) and paste", pblock),
+             (f"Storage tab: click cell {cell} ({month_name}, Tier 1 #TBPreservicaHot) and paste", sblock)]
+    interactive = not args.no_clipboard and sys.stdin.isatty() and sys.stdout.isatty()
+    print("")
+    for i, (where, block) in enumerate(steps, start=1):
+        if interactive and copy_to_clipboard(block):
+            input(f"Step {i} of 2: copied {block.count(chr(10)) + 1} value(s). {where} (Ctrl+V). Press Enter when done... ")
+        else:
+            print(f"Step {i} of 2: {where} the block {i} from {paste_path}.")
+    if interactive:
+        print("All done. #Downloads (Use) comes from Google Analytics.")
 
 
 if __name__ == "__main__":

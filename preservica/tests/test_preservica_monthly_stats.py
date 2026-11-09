@@ -196,99 +196,156 @@ def read_csv(path):
         return list(csv.reader(f))
 
 
+# A Preservica tab, downloaded as CSV, laid out like the real one but with this
+# test's collections and file types (and one row the script can't fill).
+SHEET_CSV = """,,January,February,March,April,May,June,July,August,September,October,November,December,Totals
+Category,Metric
+Content,#Collections,,,,,,,,4,4,4
+,#Folders
+,#Assets
+,#Files
+
+AssetsByKind,#Images
+,#SoundRecordings
+,#MovingImages
+,#Text
+,#Other
+
+Additions,#CollectionsAdded
+,#AssetsAdded
+
+Storage,#TBStored
+,#TBHot
+,#TBCold
+
+TBByCollection,#TBU
+,#TBOP
+
+AssetsByFileType,#Assets .tif
+,#Assets .mp3
+
+FormatGroups,#StillImages
+,#Text
+,#Audio
+,#MovingImages
+
+Integrity,#FilesCheckedThisMonth
+,#FilesFailedLastCheck
+,#FilesNeverChecked
+
+Use,#Downloads
+"""
+
+
 class MonthlyStatsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.old = os.getcwd()
         os.chdir(self.tmp.name)
+        with open("layout.csv", "w", encoding="utf-8") as f:
+            f.write(SHEET_CSV)
 
     def tearDown(self):
         os.chdir(self.old)
         self.tmp.cleanup()
 
-    def run_script(self, *argv, month="2026-10"):
+    def run_script(self, *argv, month="2026-10", tty=False, copy=None):
         fake = FakePreservica()
         env = {"PRESERVICA_USERNAME": "svc", "PRESERVICA_PASSWORD": "pw", "PRESERVICA_TENANT": "UNIOWA",
                "PRESERVICA_SERVER": "us.preservica.com"}
         out = io.StringIO()
         with mock.patch.dict(os.environ, env), mock.patch.object(pms.requests, "Session", return_value=fake), \
-                mock.patch.object(sys, "argv", ["x", "--month", month, *argv]), contextlib.redirect_stdout(out):
+                mock.patch.object(sys, "argv", ["x", "--month", month, *argv]), contextlib.redirect_stdout(out), \
+                mock.patch.object(sys.stdin, "isatty", return_value=tty), \
+                mock.patch.object(sys.stdout, "isatty", return_value=tty, create=True), \
+                mock.patch.object(pms, "copy_to_clipboard", side_effect=copy or (lambda t: False)), \
+                mock.patch("builtins.input", return_value=""):
             pms.main()
         return fake, out.getvalue()
 
-    def figures(self, path="preservica_stats_2026-10.csv"):
-        rows, tab, cat, got = read_csv(path), None, None, {}
-        self.assertEqual(rows[0], ["Tab", "Category", "Metric", "October 2026"])
-        for t, c, metric, v in rows[1:]:
-            tab, cat = t or tab, c or (cat if t == "" or t == tab else c)
-            got[(t, c or cat, metric)] = v
-        return got
-
-    def test_csv_has_every_figure(self):
-        fake, out = self.run_script()
-        f = self.figures()
-        v = lambda tab, cat, metric: f[(tab, cat, metric)]
-        # DCDS rows: added in October (asset 1 is from October, asset 2 from 2025).
-        self.assertEqual(v("DCDS", "Preservica", "#Collections"), "1")
-        self.assertEqual(v("DCDS", "Preservica", "#Assets"), "1")
-        self.assertEqual(v("DCDS", "Preservica", "#Images"), "1")
-        self.assertEqual(v("DCDS", "Preservica", "#Text"), "0")
-        self.assertNotIn(("DCDS", "Preservica", "#Downloads"), f)
-        # Storage tab, 2 decimals: Hot 0.5 TB (one file), Cold 1.0 TB (three files).
-        self.assertEqual(v("Storage", "Tier 1", "#TBPreservicaHot"), "0.5")
-        self.assertEqual(v("Storage", "Tier 1", "#TBPreservicaCold"), "1.0")
-        # Preservica tab.
-        self.assertEqual(v("Preservica", "Content", "#Assets"), "2")
-        self.assertEqual(v("Preservica", "Content", "#Files"), "4")
-        # Kinds come from the current Preservation file's extension: the .mp3 is a sound recording
-        # although Preservica's format group says pdf.
-        self.assertEqual(v("Preservica", "AssetsByKind", "#Images"), "1")
-        self.assertEqual(v("Preservica", "AssetsByKind", "#SoundRecordings"), "1")
-        self.assertEqual(v("Preservica", "AssetsByKind", "#Text"), "0")
-        self.assertEqual(v("Preservica", "AssetsByFileType", "#Assets .tif"), "1")
-        self.assertEqual(v("Preservica", "AssetsByFileType", "#Assets .mp3"), "1")
-        self.assertEqual(v("Preservica", "FilesByFileType", "#Files .wav"), "1")
-        self.assertEqual(v("Preservica", "TBByFileType", "#TB .tif"), "0.5")
-        self.assertEqual(v("Preservica", "Storage", "#TBStored"), "1.5")
-        self.assertEqual(v("Preservica", "Storage", "#TBOlderGenerations"), "0.25")
-        self.assertEqual(v("Preservica", "Storage", "#DuplicateFiles"), "1")
-        self.assertEqual(v("Preservica", "Tiers", "#FilesHotAndCold"), "1")
-        self.assertEqual(v("Preservica", "TBByCollection", "#TB Uprising"), "0.5")
-        self.assertEqual(v("Preservica", "Integrity", "#FilesCheckedThisMonth"), "2")
-        self.assertEqual(v("Preservica", "Integrity", "#FilesNeverChecked"), "1")
-        self.assertIn("#Assets .mp3", out)                        # the figures are printed too
-        self.assertEqual(fake.calls[bs(CO1, 1)], 1)               # a file shared by two representations: read once
-
-    def test_paste_file_lines_up_with_the_sheet(self):
-        self.run_script()
-        with open("preservica_stats_2026-10_paste.txt", encoding="utf-8") as f:
+    def paste_blocks(self, path="preservica_stats_2026-10_paste.txt"):
+        with open(path, encoding="utf-8") as f:
             text = f.read()
-        blocks = text.split("\n== ")
-        dcds = blocks[1].splitlines()[1:]
-        self.assertEqual(dcds[:6], ["1", "1", "1", "0", "0", "0"])   # #Collections ... #Text
-        storage = blocks[2].splitlines()[1:3]
-        self.assertEqual(storage, ["0.5", "1.0"])
-        first = blocks[3].splitlines()[1]
-        cols = first.split("\t")
-        self.assertEqual(cols[:2], ["Content", "#Collections"])
-        self.assertEqual(len(cols), 2 + 10)                          # October = the 10th month column (L)
-        self.assertEqual(cols[-1], "2")
-        values = [l for l in blocks[4].splitlines()[1:] if l != ""]
-        firsts = [l for l in blocks[3].splitlines()[1:] if l]
-        self.assertEqual(len(values), len(firsts))
+        return {b.split("\n", 1)[0]: b.split("\n", 1)[1].rstrip("\n").split("\n") for b in text.split("\n== ")[1:]}
 
-    def test_total_counts_and_options(self):
-        self.run_script("--dcds-counts", "total", "--no-integrity", "--workers", "1", "--output", "x")
-        f = self.figures("x.csv")
-        self.assertEqual(f[("DCDS", "Preservica", "#Assets")], "2")
-        self.assertEqual(f[("DCDS", "Preservica", "#Collections")], "2")
-        self.assertFalse(any(k[1] == "Integrity" for k in f))
+    def test_paste_block_lines_up_with_the_sheet_rows(self):
+        fake, out = self.run_script("--layout", "layout.csv")
+        blocks = self.paste_blocks()
+        pres = next(v for k, v in blocks.items() if k.startswith("1. Preservica tab: click cell L3"))
+        # One line per sheet row from row 3, blank rows kept, stopping before Use #Downloads.
+        expected = ["2", "2", "2", "4", "",
+                    "1", "1", "0", "0", "0", "",
+                    "1", "1", "",
+                    "1.5", "0.5", "1.0", "",
+                    "0.5", "0.5", "",
+                    "1", "1", "",
+                    "1", "1", "0", "0", "",
+                    "2", "1", "1"]
+        self.assertEqual(pres, expected)
+        storage = next(v for k, v in blocks.items() if k.startswith("2. Storage tab: click cell L3"))
+        self.assertEqual(storage, ["0.5", "1.0"])
+        # Figures the sheet has no row for are listed, not pasted.
+        extra = next(v for k, v in blocks.items() if k.startswith("Figures with no row"))
+        self.assertIn("FilesByFileType\t#Files .wav\t1", extra)
+        self.assertIn("SecurityTags\t#Assets open\t1", extra)
+        self.assertIn("figure(s) have no row in the Preservica tab", out)
+        self.assertEqual(fake.calls[bs(CO1, 1)], 1)          # a shared file is read once
+
+    def test_figures_csv(self):
+        self.run_script("--layout", "layout.csv")
+        rows = read_csv("preservica_stats_2026-10.csv")
+        self.assertEqual(rows[0], ["Tab", "Category", "Metric", "October 2026"])
+        got, tab, cat = {}, None, None
+        for t, c, metric, v in rows[1:]:
+            tab, cat = t or tab, c or cat
+            got[(tab, cat, metric)] = v
+        self.assertEqual(got[("Storage", "Tier 1", "#TBPreservicaHot")], "0.5")
+        self.assertEqual(got[("Preservica", "AssetsByKind", "#SoundRecordings")], "1")   # the .mp3, not 'pdf'
+        self.assertEqual(got[("Preservica", "FormatGroups", "#Text")], "1")              # Preservica's group: pdf
+        self.assertEqual(got[("Preservica", "TBByCollection", "#TBU")], "0.5")
+        self.assertEqual(got[("Preservica", "TBByFileType", "#TB .tif")], "0.5")
+        self.assertEqual(got[("Preservica", "Storage", "#TBOlderGenerations")], "0.25")
+        self.assertEqual(got[("Preservica", "Storage", "#DuplicateFiles")], "1")
+        self.assertNotIn(("Preservica", "Use", "#Downloads"), got)
+
+    def test_clipboard_steps_when_run_in_a_terminal(self):
+        copied = []
+        _, out = self.run_script("--layout", "layout.csv", tty=True, copy=lambda t: copied.append(t) or True)
+        self.assertEqual(len(copied), 2)
+        self.assertTrue(copied[0].startswith("2\n2\n2\n4\n\n1"))
+        self.assertFalse(copied[0].endswith("\n"))               # no trailing line to blank the next row
+        self.assertEqual(copied[1], "0.5\n1.0")
+        self.assertIn("All done", out)
+
+    def test_built_in_layout_is_the_real_sheet(self):
+        layout = pms.parse_layout(pms.PRESERVICA_TAB)
+        self.assertEqual(layout[0], ("Content", "#Collections"))
+        self.assertEqual(layout[-1], ("Use", "#Downloads"))
+        self.assertIn(("TBByCollection", "#TBSCUA"), layout)
+        self.assertIn(("FormatGroups", "#Text"), layout)
+        self.assertIn(("AssetsByKind", "#Text"), layout)
+        self.assertEqual(len(layout), 114 - 44 + 1)            # sheet rows 3 to 73 (Use #Downloads)
+        self.assertEqual(layout.index(("Additions", "#CollectionsAdded")), 55 - 44)
+
+    def test_default_run_uses_the_built_in_layout(self):
+        _, out = self.run_script("--no-integrity", "--workers", "1", "--output", "x")
+        blocks = self.paste_blocks("x_paste.txt")
+        pres = next(v for k, v in blocks.items() if k.startswith("1. Preservica tab"))
+        self.assertEqual(pres[:4], ["2", "2", "2", "4"])
+        unfilled = next(v for k, v in blocks.items() if k.startswith("Rows in the Preservica tab with no figure"))
+        self.assertIn("TBByCollection\t#TBIR", unfilled)       # this test's collections aren't IR or SCUA
+
+    def test_collection_codes(self):
+        self.assertEqual(pms.collection_code("Special Collections & University Archives"), "SCUA")
+        self.assertEqual(pms.collection_code("Institutional Repository"), "IR")
+        self.assertEqual(pms.collection_code("Old Photos"), "OP")
+        self.assertEqual(pms.collection_code("Test Folder"), "TF")
 
     def test_report_month_late_on_the_first_counts_as_previous_month(self):
         class Fixed(dt.datetime):
             @classmethod
             def now(cls, tz=None):
-                return dt.datetime(2026, 11, 1, 0, 30, tzinfo=tz)
+                return dt.datetime(2026, 11, 5, 18, 30, tzinfo=tz)
         with mock.patch.object(pms.dt, "datetime", Fixed):
             self.assertEqual(pms.report_month(None), (2026, 10))
         self.assertEqual(pms.report_month("2026-03"), (2026, 3))

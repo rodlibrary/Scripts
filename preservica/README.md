@@ -12,7 +12,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | Every metadata field of every asset under a folder, flattened into a CSV | [`preservica_metadata_export.py`](#preservica_metadata_exportpy) |
 | Look at, download or update one record's metadata | [`preservica_metadata_api.py`](#preservica_metadata_apipy), the [*read metadata* Postman collection](postman/), or Preservica's Swagger pages ([`API_GUIDE.md`](API_GUIDE.md)) |
 | See how much storage the content uses, split into hot and cold storage | The [*storage report* Postman collection](postman/) |
-| Each month's figures for the DCDS stats Google Sheet (Preservica, Storage and DCDS tabs), as a CSV | [`preservica_monthly_stats.py`](#preservica_monthly_statspy) (fast: a minute or two), or the [*monthly stats* Postman collection](postman/README.md#monthly-stats) |
+| Each month's figures for the DCDS stats Google Sheet (Preservica and Storage tabs) | [`preservica_monthly_stats.py`](#preservica_monthly_statspy) (fast: a minute or two), or the [*monthly stats* Postman collection](postman/README.md#monthly-stats) |
 | The month's downloads for the DCDS sheet | The [*monthly downloads* Postman collection](postman/README.md#monthly-downloads) |
 | A CSV of every asset's ARK (MODS Archival Resource Key and Location (URL)), with its Preservica reference | The [*assets with an ARK* Postman collection](postman/README.md#assets-with-an-ark) |
 | Download links for a list of ARKs | [`preservica_ark_download_urls.py`](#preservica_ark_download_urlspy) |
@@ -29,7 +29,7 @@ Scripts, a scheduled GitHub export and Postman collections for reading, exportin
 | [`preservica_metadata_export.py`](preservica_metadata_export.py) | Walks a folder and flattens every metadata document of every asset (MODS, Dublin Core, custom schemas) into CSV columns. Slower, but not limited to indexed fields. | Any computer with Python 3 |
 | [`preservica_metadata_api.py`](preservica_metadata_api.py) | Lists, downloads and updates one record's metadata through the Entity API | Any computer with Python 3 |
 | [`API_GUIDE.md`](API_GUIDE.md) | How to use Preservica's Swagger pages, and the requests for reading, downloading and updating metadata | – |
-| [`preservica_monthly_stats.py`](preservica_monthly_stats.py) | The month's figures for the DCDS stats sheet as a CSV and blocks to paste: the same figures as the *monthly stats* Postman collection, measured 8 assets at a time | Any computer with Python 3 |
+| [`preservica_monthly_stats.py`](preservica_monthly_stats.py) | The month's figures for the DCDS stats sheet, lined up with its Preservica and Storage tabs: two pastes a month, via the clipboard. Measures 8 assets at a time | Any computer with Python 3 |
 | [`tests/`](tests/) | Offline tests for `preservica_monthly_stats.py` (a fake Preservica) | `python -m unittest discover -s tests` |
 | [`postman/`](postman/) | Seven ready-made Postman collections: read one record, download all metadata, selected metadata to CSV, storage report (hot and cold), monthly stats for the DCDS sheet, assets with an ARK to CSV, monthly downloads | Postman |
 | [`check_preservica_login.py`](check_preservica_login.py) | Checks the credentials file and shows exactly why a login fails | Any computer with Python 3 |
@@ -131,7 +131,7 @@ The workflow [`.github/workflows/preservica-metadata-export.yml`](../.github/wor
 
 ## preservica_monthly_stats.py
 
-Measures Preservica for the month and writes the figures for the **DCDS_stats** Google Sheet. It gives the same figures as the [*monthly stats* Postman collection](postman/README.md#monthly-stats), but measures 8 assets at a time from your own computer, so a few hundred assets take a minute or two instead of a long Postman run.
+Measures Preservica for the month and gives the figures for the **DCDS_stats** Google Sheet, lined up with the sheet's rows, so each month is **two pastes**. It measures 8 assets at a time from your own computer, so a few hundred assets take a minute or two.
 
 ```powershell
 python -m pip install pyPreservica requests
@@ -139,30 +139,41 @@ python preservica_monthly_stats.py                    # this month (in the first
 python preservica_monthly_stats.py --month 2026-10
 ```
 
-It uses `credentials.properties` like the other scripts, and writes two files in the folder you run it from:
+It uses `credentials.properties` like the other scripts. When it finishes, it walks you through the two pastes, putting each block on the clipboard in turn:
+
+1. **Preservica tab:** click the month's cell in row 3 (*Content #Collections*; October = **L3**) and paste (Ctrl+V). The block fills every row down to *Integrity*, blank rows included. It stops before *Use #Downloads*, so a downloads figure entered from Google Analytics is never blanked.
+2. **Storage tab:** click the same cell, the month's cell in row 3 (*Tier 1 #TBPreservicaHot*), and paste. That fills Hot and Cold, in TB with 4 decimal places.
+
+It also writes two files in the folder:
 
 | File | Contents |
 |---|---|
-| `preservica_stats_<YYYY-MM>.csv` | Tab, Category, Metric and the month's value for every figure, in the order of the sheet's rows |
-| `preservica_stats_<YYYY-MM>_paste.txt` | Blocks to copy into the sheet. **DCDS tab:** six values, pasted into the month's Preservica #Collections cell, filling #Collections down to #Text. **Storage tab:** two values (TB) for Tier 1. **Preservica tab:** with labels the first time, pasted at A3, or values only in later months |
+| `preservica_stats_<YYYY-MM>_paste.txt` | The same two blocks, for pasting by hand. It also lists **figures with no row in the sheet**, such as a new file type or collection, and **rows left blank** because nothing was measured for them. |
+| `preservica_stats_<YYYY-MM>.csv` | Every figure: Tab, Category, Metric and value |
 
-The figures are worked out as in the Postman collection:
+**When the sheet's rows change.** The Preservica tab's rows are built into the script (`PRESERVICA_TAB`), matching the sheet as of November 2026. If you add, remove or rename rows, for example to add a row for a new file type the script listed, open the Preservica tab and choose **File > Download > Comma-separated values**. Then run the script with `--layout` and that file:
 
-- Kinds (images, text, sound recordings, moving images) come from the file extension of each asset's current Preservation file.
-- Hot or Cold comes from the storage location's name.
-- TB are decimal: 2 places for the Storage tab, 4 for the Preservica tab.
-- "Added" means created in the month.
-- **#Downloads isn't included:** Preservica doesn't record downloads, so they come from the portal's Google Analytics (see [Monthly downloads](postman/README.md#monthly-downloads)).
+```powershell
+python preservica_monthly_stats.py --layout "DCDS_stats_2026 - Preservica.csv"
+```
+
+How the figures are worked out:
+
+- **AssetsByKind** comes from the file extension of each asset's current Preservation file: `.jpg .tif .png` images, `.pdf .doc` text, `.mp3 .wav` sound, `.mp4 .mov` moving images. **FormatGroups** comes from Preservica's own format group, counted per asset: StillImages, Text, Audio, MovingImages.
+- **TBByCollection** uses short names for the top-level folders: *Institutional Repository* = `IR`, *Special Collections & University Archives* = `SCUA`, *Museum* = `UNIM`; any other folder gets its initials (`COLLECTION_CODES` in the script).
+- **Hot or Cold** comes from the storage location's name.
+- **TB** are decimal, with 4 decimal places.
+- **"Added"** means created in the month.
+- **#Downloads** (*Use*) isn't measured: Preservica doesn't record downloads, so they come from the portal's Google Analytics.
 
 Options:
 
-- `--dcds-counts total`: all-time counts in the DCDS rows instead of what was added that month.
 - `--no-integrity`: skip the integrity-check history, a little faster.
 - `--workers`: assets measured at once, default 8.
+- `--no-clipboard`: don't use the clipboard; paste from the file instead.
 - `--output`: the output files' base name.
-- `--quiet`: don't print the figures.
 
-The figures are measured as of the moment it runs, so run it near the end of the month.
+The figures are measured as of the moment it runs, so run it at the end of the month or in the first five days of the next.
 
 ## preservica_metadata_export.py
 
