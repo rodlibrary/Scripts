@@ -77,6 +77,8 @@ python3 generate_arks.py output --push-to-gitlab
 | `--no-master-list` | Skip the master list (uniqueness is then only guaranteed within this run) | Off |
 | `--resolve-manifest` | The resolve manifest | `resolve.csv` |
 | `--no-resolve-manifest` | Don't write or push the resolve manifest | Off |
+| `--slim-manifest` | Where to write the slim `ark` / `p_path` export (below) | `resolve_paths.csv` |
+| `--no-slim-manifest` | Don't write the slim export | Off |
 | `--resolver` | Resolver base URL for the links in `output.csv` | `https://n2t.net` |
 | `--gitlab-project` | GitLab project to pull from and push to | `rod-library/resolver` |
 | `--gitlab-branch` | Its branch | `main` |
@@ -89,6 +91,7 @@ python3 generate_arks.py output --push-to-gitlab
 | `output.csv` | One row per input record: the ARK, a resolvable `https://n2t.net/...` link, all metadata, and status and notes columns reporting any problems |
 | `output.anvl` | ANVL metadata records, the format N2T and EZID import |
 | `resolve.csv` | The resolve manifest Apache uses (below). New ARKs are added; existing rows are never changed. |
+| `resolve_paths.csv` | The slim export with just `ark` and `p_path` (below). Rebuilt from `resolve.csv` every run. |
 | `ark_master_list.csv` | Every ARK ever minted, with a timestamp and source file. Only ever added to. |
 
 Running the script again with the same output name overwrites `output.csv` and `output.anvl`, so rename or move them first if you want to keep them.
@@ -105,6 +108,20 @@ Running the script again with the same output name overwrites `output.csv` and `
 | `target_url` | Where Apache sends the ARK |
 | `status` | `active`, `withdrawn` (HTTP 410) or `unmatched` (not resolved yet) |
 | `notes` | Problems reported when minting, and when each ARK was matched in Preservica |
+
+### resolve_paths.csv (slim export)
+
+If you only need the ARK and where it goes, `resolve_paths.csv` has two columns and nothing else:
+
+| Column | Meaning |
+|---|---|
+| `ark` | The ARK without `ark:/`, e.g. `32498/s3x7k9q2mbd` (same as in `resolve.csv`) |
+| `p_path` | Where the ARK redirects to (the `target_url` in `resolve.csv`) |
+
+- It is built from `resolve.csv` at the end of every run, after any Preservica matching, and **overwritten** each time. It is a copy, not a record, so edit `resolve.csv`, never this file.
+- It only lists rows whose `status` is `active` and that have a `target_url`. `withdrawn` and `unmatched` ARKs, and ARKs with no target yet, are left out.
+- `resolve.csv` is unchanged and is still what the Preservica matching and the GitLab checks use. `--push-to-gitlab` does **not** push `resolve_paths.csv`.
+- The weekly Preservica matching in GitLab changes `target_url` in `resolve.csv` but doesn't rebuild this file. Run `generate_arks.py` again to refresh it.
 
 ## Match Preservica references: match_preservica.py
 
