@@ -226,6 +226,43 @@ class GenerateArksTest(Base):
         self.assertIn("nothing was minted", str(e.exception))
         self.assertFalse(os.path.exists("resolve.csv"))
 
+    def test_slim_export_has_only_ark_and_p_path_for_active_rows_with_a_target(self):
+        write("resolve.csv", RESOLVE_HEADER, [
+            ["etd/1", "", "32498/s3active001", "", "https://x/1", "active", ""],
+            ["etd/2", "", "32498/s3notarget1", "", "", "active", ""],
+            ["etd/3", "", "32498/s3withdrawn", "", "https://x/3", "withdrawn", ""],
+            ["etd/4", "", "32498/s3unmatched", "", "https://x/4", "unmatched", ""],
+        ])
+        write("arks.csv", ["identifier", "title", "url"], [["n1", "New one", "https://y/1"], ["n2", "No url", ""]])
+        out = self.main(ga, "out", "--no-master-list")
+        self.assertIn("Wrote 2 row(s) (ark, p_path) to resolve_paths.csv", out)
+        with open("resolve_paths.csv", newline="", encoding="utf-8") as f:
+            self.assertEqual(next(csv.reader(f)), ["ark", "p_path"])
+        slim = read("resolve_paths.csv")
+        self.assertEqual(slim[0], {"ark": "32498/s3active001", "p_path": "https://x/1"})
+        self.assertTrue(slim[1]["ark"].startswith("32498/"))
+        self.assertEqual(slim[1]["p_path"], "https://y/1")
+        self.assertEqual(len(slim), 2)
+        # resolve.csv itself keeps all of its columns and rows (4 old + 2 minted).
+        with open("resolve.csv", newline="", encoding="utf-8") as f:
+            self.assertEqual(next(csv.reader(f)), RESOLVE_HEADER)
+        self.assertEqual(len(read("resolve.csv")), 6)
+
+    def test_slim_export_is_not_pushed_and_can_be_renamed_or_disabled(self):
+        gitlab = FakeGitLab({"ark_master_list.csv": MASTER_HEADER and ",".join(MASTER_HEADER) + "\r\n",
+                             "resolve.csv": ",".join(RESOLVE_HEADER) + "\r\n"})
+        write("arks.csv", ["identifier", "title", "url"], [["n1", "One", "https://y/1"]])
+        with fake_net(gitlab):
+            self.main(ga, "out", "--push-to-gitlab", "--slim-manifest", "paths.csv")
+        self.assertEqual({p[1] for p in gitlab.pushes}, {"ark_master_list.csv", "resolve.csv"})
+        self.assertEqual(len(read("paths.csv")), 1)
+        self.assertFalse(os.path.exists("resolve_paths.csv"))
+
+        os.remove("paths.csv")
+        write("arks.csv", ["identifier", "title", "url"], [["n2", "Two", "https://y/2"]])
+        self.main(ga, "out2", "--no-master-list", "--no-slim-manifest", "--slim-manifest", "paths.csv")
+        self.assertFalse(os.path.exists("paths.csv"))
+
 
 class MatchTest(Base):
     def setUp(self):

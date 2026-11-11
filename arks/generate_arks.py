@@ -78,6 +78,15 @@ RESOLVE MANIFEST (resolve.csv)
     resolve.csv doesn't exist yet but redirects.csv does, its rows are
     copied into resolve.csv the first time the script runs.
 
+    SLIM EXPORT (resolve_paths.csv): after each run, a second file with only
+    the columns "ark" and "p_path" is rebuilt from the full resolve manifest
+    (override the name with --slim-manifest; disable with
+    --no-slim-manifest). "p_path" is the manifest's target_url, i.e. where
+    the ARK redirects to. Only rows with status "active" and a non-blank
+    target_url are included, since a row with nowhere to redirect is of no
+    use to a resolver. The file is overwritten every run (it is derived, not
+    a record), and it is NOT pushed to GitLab by --push-to-gitlab.
+
     Preservica references are filled in later by match_preservica.py, which
     reads each Preservica asset's MODS "Archival Resource Key" identifier
     and "Location (URL)" and records the asset holding each ARK. Pass
@@ -183,6 +192,11 @@ RESOLVE_FIELDS = (
     "status", "notes",
 )
 REDIRECT_FIELDS = RESOLVE_FIELDS  # older name, kept for scripts that import it
+
+# Slim export: just the ARK and where it redirects to (the manifest's
+# target_url). Rebuilt from the resolve manifest on every run.
+DEFAULT_SLIM_MANIFEST = "resolve_paths.csv"
+SLIM_FIELDS = ("ark", "p_path")
 
 # GitLab project that receives resolve.csv and the master list.
 DEFAULT_GITLAB_URL = "https://git.uni.edu"
@@ -497,6 +511,31 @@ def append_resolve_manifest(manifest_path: str, results: list[dict]) -> int:
 append_redirects_manifest = append_resolve_manifest  # older name
 
 
+def write_slim_manifest(resolve_path: str, slim_path: str) -> int:
+    """
+    Rebuild the slim export from the full resolve manifest: one row per
+    ARK with only `ark` and `p_path` (= the manifest's target_url). Rows
+    that are not status "active" or that have no target_url are left out.
+    The file is overwritten each time. Returns the number of rows written.
+    """
+    rows = []
+    seen = set()
+    with open(resolve_path, newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            ark = (row.get("ark") or "").strip()
+            target = (row.get("target_url") or "").strip()
+            status = (row.get("status") or "").strip().lower()
+            if not ark or not target or status != "active" or ark in seen:
+                continue
+            seen.add(ark)
+            rows.append({"ark": ark, "p_path": target})
+    with open(slim_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=SLIM_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    return len(rows)
+
+
 def migrate_legacy_manifest(manifest_path: str) -> bool:
     """
     One-time move from redirects.csv to resolve.csv: if `manifest_path`
@@ -796,6 +835,22 @@ def main() -> None:
         help="Do not write or push the resolve manifest.",
     )
     parser.add_argument(
+        "--slim-manifest",
+        default=DEFAULT_SLIM_MANIFEST,
+        help=(
+            "Path for the slim export with only the columns "
+            + ", ".join(SLIM_FIELDS)
+            + " (p_path is the manifest's target_url; only active rows with "
+            "a target are included). Rebuilt from the resolve manifest on "
+            f"every run and not pushed to GitLab. (default: {DEFAULT_SLIM_MANIFEST})"
+        ),
+    )
+    parser.add_argument(
+        "--no-slim-manifest",
+        action="store_true",
+        help="Do not write the slim ark/p_path export.",
+    )
+    parser.add_argument(
         "--gitlab-manifest-path",
         default=None,
         help=(
@@ -967,6 +1022,11 @@ def main() -> None:
             naan=args.naan,
         )
         matched = summary.get("updated", 0)
+
+    if not args.no_resolve_manifest and not args.no_slim_manifest \
+            and os.path.exists(args.resolve_manifest):
+        slim_rows = write_slim_manifest(args.resolve_manifest, args.slim_manifest)
+        print(f"Wrote {slim_rows} row(s) (ark, p_path) to {args.slim_manifest}")
 
     if args.push_to_gitlab:
         # (local file, destination path in project, commit message)
