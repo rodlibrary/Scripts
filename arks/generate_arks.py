@@ -71,8 +71,8 @@ RESOLVE MANIFEST (resolve.csv)
     "ark" is the bare NAAN/NAME form (e.g. 32498/s3abc...), without the
     "ark:/" prefix. "target_url" comes from the input "url" column. The
     file is append-only; a warning is printed if a dc_path/dc_article
-    pair is already in it. With --push-to-gitlab both this file and the
-    master list are pushed to the GitLab resolver repository.
+    pair is already in it. With --push-to-github both this file and the
+    master list are pushed to the GitHub resolver repository.
 
     resolve.csv replaces the earlier redirects.csv (same columns). If
     resolve.csv doesn't exist yet but redirects.csv does, its rows are
@@ -85,7 +85,7 @@ RESOLVE MANIFEST (resolve.csv)
     the ARK redirects to. Only rows with status "active" and a non-blank
     target_url are included, since a row with nowhere to redirect is of no
     use to a resolver. The file is overwritten every run (it is derived, not
-    a record), and it is NOT pushed to GitLab by --push-to-gitlab.
+    a record), and it is NOT pushed to GitHub by --push-to-github.
 
     Preservica references are filled in later by match_preservica.py, which
     reads each Preservica asset's MODS "Archival Resource Key" identifier
@@ -109,31 +109,34 @@ MASTER LIST (RECORDKEEPING & CROSS-RUN UNIQUENESS)
     Use --no-master-list to opt out (uniqueness is then only guaranteed
     within a single run).
 
-PULLING FROM AND PUSHING TO GITLAB
+PULLING FROM AND PUSHING TO GITHUB
 ------------------------------------
-    Pass --push-to-gitlab to commit the updated master list and resolve.csv
-    to the GitLab resolver project after each run, via the GitLab Repository
-    Files API (creates each file on first push, updates it after that -- no
-    external HTTP library required).
+    Pass --push-to-github to commit the updated master list and resolve.csv
+    to the GitHub resolver repository after each run, via the GitHub
+    repository contents API (creates each file on first push, updates it
+    after that -- no external HTTP library required).
 
-    Before minting, --push-to-gitlab first pulls the GitLab copies of both
-    files and merges them into the local ones: rows already in GitLab are
-    kept as they are, and local rows GitLab doesn't have yet are added. So a
+    Before minting, --push-to-github first pulls the GitHub copies of both
+    files and merges them into the local ones: rows already in GitHub are
+    kept as they are, and local rows GitHub doesn't have yet are added. So a
     run never mints a blade someone else minted elsewhere, and never pushes
     an out-of-date copy over newer rows (such as Preservica references added
     by match_preservica.py). Use --no-pull to skip this.
 
-    --gitlab-project must name a specific PROJECT (repository), not a
-    GitLab group (default: rod-library/resolver, i.e.
-    https://git.uni.edu/rod-library/resolver). --gitlab-url points at the
-    GitLab instance itself (default: https://git.uni.edu).
+    --github-repo names the repository as owner/name (default:
+    rodlibrary/Resolver, i.e. https://github.com/rodlibrary/Resolver).
 
-    Requires a GitLab token (personal or project access token) with 'api'
-    scope for the project, supplied via an environment variable (default:
-    GITLAB_TOKEN) -- never pass a token on the command line. Example:
+    Requires a GitHub token that can write to that repository (a
+    fine-grained personal access token with Contents: Read and write),
+    supplied via an environment variable (default: GITHUB_TOKEN) -- never
+    pass a token on the command line. Example:
 
-        export GITLAB_TOKEN=glpat-...your_token...
-        python3 generate_arks.py output --push-to-gitlab
+        export GITHUB_TOKEN=github_pat_...your_token...
+        python3 generate_arks.py output --push-to-github
+
+    The resolver used to live in GitLab (git.uni.edu/rod-library/resolver).
+    The old --push-to-gitlab and --gitlab-* options have been removed; the
+    script stops with a message saying what to use instead.
 
 USAGE
 -----
@@ -144,8 +147,8 @@ USAGE
     python3 generate_arks.py output --add-checksum
     python3 generate_arks.py output --resolver https://n2t.net
     python3 generate_arks.py output --master-list /path/to/ark_master_list.csv
-    python3 generate_arks.py output --push-to-gitlab
-    python3 generate_arks.py output --push-to-gitlab --match-preservica   # everything in one step
+    python3 generate_arks.py output --push-to-github
+    python3 generate_arks.py output --push-to-github --match-preservica   # everything in one step
     python3 generate_arks.py other_input.csv output   # override the input file
 
 Run `python3 generate_arks.py -h` for all options.
@@ -198,9 +201,11 @@ REDIRECT_FIELDS = RESOLVE_FIELDS  # older name, kept for scripts that import it
 DEFAULT_SLIM_MANIFEST = "resolve_paths.csv"
 SLIM_FIELDS = ("ark", "p_path")
 
-# GitLab project that receives resolve.csv and the master list.
-DEFAULT_GITLAB_URL = "https://git.uni.edu"
-DEFAULT_GITLAB_PROJECT = "rod-library/resolver"
+# GitHub repository that receives resolve.csv and the master list.
+DEFAULT_GITHUB_API_URL = "https://api.github.com"
+DEFAULT_GITHUB_REPO = "rodlibrary/Resolver"
+DEFAULT_GITHUB_BRANCH = "main"
+DEFAULT_GITHUB_TOKEN_ENV = "GITHUB_TOKEN"
 # active     -> resolve (redirect) to target_url
 # withdrawn  -> served as HTTP 410 (target_url may be blank)
 # unmatched  -> ignored by the resolver, kept for tracking
@@ -554,36 +559,113 @@ def migrate_legacy_manifest(manifest_path: str) -> bool:
     return True
 
 
-def _gitlab_file_api(gitlab_url: str, project: str, path: str) -> str:
+# Options the scripts had while the resolver lived in GitLab. They now stop
+# the script with a pointer to the GitHub equivalent instead of being ignored,
+# so an old command or pipeline can't quietly do nothing.
+REMOVED_GITLAB_OPTIONS = {
+    "--push-to-gitlab": "--push-to-github",
+    "--from-gitlab": "--from-github",
+    "--gitlab-project": "--github-repo",
+    "--gitlab-branch": "--github-branch",
+    "--gitlab-token-env": "--github-token-env (default GITHUB_TOKEN)",
+    "--gitlab-path": "--github-path",
+    "--gitlab-manifest-path": "--github-manifest-path",
+    "--gitlab-master-path": "--github-master-path",
+    "--gitlab-report-path": "--github-report-path",
+    "--gitlab-url": "--github-api-url (rarely needed)",
+}
+
+
+def reject_gitlab_options(argv: "list[str] | None" = None) -> None:
+    """Stop with a clear message if a removed GitLab option is used."""
+    used = []
+    for arg in (sys.argv[1:] if argv is None else argv):
+        name = arg.split("=", 1)[0]
+        if name in REMOVED_GITLAB_OPTIONS and name not in used:
+            used.append(name)
+    if used:
+        sys.exit(
+            "The ARK resolver moved from GitLab to GitHub "
+            f"(https://github.com/{DEFAULT_GITHUB_REPO}), so these options are gone:\n"
+            + "".join(f"  {u}  ->  use {REMOVED_GITLAB_OPTIONS[u]}\n" for u in used)
+            + "Set GITHUB_TOKEN to a GitHub token with Contents: Read and write on the "
+            "repository. See arks/README.md in rodlibrary/Scripts."
+        )
+
+
+def _github_headers(token: str, accept: str = "application/vnd.github+json") -> dict:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": accept,
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "rodlibrary-ark-scripts",
+    }
+
+
+def _github_contents_url(api_url: str, repo: str, path: str) -> str:
     return (
-        f"{gitlab_url.rstrip('/')}/api/v4/projects/{urllib.parse.quote(project, safe='')}"
-        f"/repository/files/{urllib.parse.quote(path, safe='')}"
+        f"{api_url.rstrip('/')}/repos/{repo.strip('/')}/contents/"
+        f"{urllib.parse.quote(path.lstrip('/'), safe='/')}"
     )
 
 
-def fetch_file_from_gitlab(
-    gitlab_url: str, project: str, path: str, branch: str, token: str,
+def _github_error(e: urllib.error.HTTPError) -> str:
+    """GitHub's error message from an HTTPError, short and without the token."""
+    raw = e.read().decode("utf-8", "ignore")
+    try:
+        return str(json.loads(raw).get("message") or raw)[:300]
+    except (ValueError, AttributeError):
+        return raw[:300]
+
+
+def _github_token_hint(repo: str) -> str:
+    return (
+        f" -- the token can't see or write to {repo}. Use a fine-grained personal "
+        f"access token whose resource owner is {repo.split('/')[0]}, with access to "
+        f"{repo} and the permission Contents: Read and write (and check it hasn't "
+        "expired). check_github.py tests this."
+    )
+
+
+def fetch_file_from_github(
+    api_url: str, repo: str, path: str, branch: str, token: str,
 ) -> "bytes | None":
     """
-    The contents of `path` in the GitLab project on `branch`, or None if the
-    file (or the branch) doesn't exist yet. Raises RuntimeError on any other
-    failure, with a readable message that never contains the token.
+    The contents of `path` in the GitHub repository `repo` (owner/name) on
+    `branch`, or None if the file doesn't exist there yet. Raises
+    RuntimeError -- with a readable message that never contains the token --
+    if the repository or branch can't be found, or on any other failure.
     """
+    url = f"{_github_contents_url(api_url, repo, path)}?ref={urllib.parse.quote(branch, safe='')}"
     req = urllib.request.Request(
-        f"{_gitlab_file_api(gitlab_url, project, path)}/raw?ref={urllib.parse.quote(branch, safe='')}",
-        headers={"PRIVATE-TOKEN": token, "User-Agent": "generate_arks.py"}, method="GET",
+        url, headers=_github_headers(token, "application/vnd.github.raw+json"), method="GET",
     )
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
             return resp.read()
     except urllib.error.HTTPError as e:
+        message = _github_error(e)
         if e.code == 404:
+            if "no commit found" in message.lower():
+                raise RuntimeError(f"{repo} has no branch {branch!r}") from e
+            # GitHub answers 404 both for a missing file and for a repository
+            # the token can't see, so tell the two apart before saying "new file".
+            check = urllib.request.Request(
+                f"{api_url.rstrip('/')}/repos/{repo.strip('/')}",
+                headers=_github_headers(token), method="GET",
+            )
+            try:
+                with urllib.request.urlopen(check, timeout=60) as resp:
+                    resp.read()
+            except urllib.error.HTTPError as e2:
+                raise RuntimeError(
+                    f"{repo} not found ({e2.code}){_github_token_hint(repo)}"
+                ) from e2
             return None
-        raise RuntimeError(
-            f"download of {path} failed ({e.code}): {e.read().decode('utf-8', 'ignore')[:300]}"
-        ) from e
+        hint = _github_token_hint(repo) if e.code in (401, 403) else ""
+        raise RuntimeError(f"download of {path} failed ({e.code}): {message}{hint}") from e
     except urllib.error.URLError as e:
-        raise RuntimeError(f"can't reach {gitlab_url}: {e.reason}") from e
+        raise RuntimeError(f"can't reach {api_url}: {e.reason}") from e
 
 
 def _csv_rows(text: str) -> tuple[list[str], list[dict]]:
@@ -593,10 +675,10 @@ def _csv_rows(text: str) -> tuple[list[str], list[dict]]:
 
 def merge_into_local(local_path: str, remote: "bytes | None", key: str = "ark") -> tuple[int, int]:
     """
-    Merge the GitLab copy of a CSV into the local file: every GitLab row is
-    kept as it is (GitLab may hold newer values, such as a Preservica
-    reference), and local rows whose `key` GitLab doesn't have are added
-    after them. Returns (rows from GitLab, local rows added). With no GitLab
+    Merge the GitHub copy of a CSV into the local file: every GitHub row is
+    kept as it is (GitHub may hold newer values, such as a Preservica
+    reference), and local rows whose `key` GitHub doesn't have are added
+    after them. Returns (rows from GitHub, local rows added). With no GitHub
     copy the local file is left alone.
     """
     if remote is None:
@@ -620,98 +702,77 @@ def merge_into_local(local_path: str, remote: "bytes | None", key: str = "ark") 
     return len(remote_rows), len(extra)
 
 
-def push_file_to_gitlab(
+def push_file_to_github(
     file_path: str,
-    gitlab_url: str,
-    project: str,
+    api_url: str,
+    repo: str,
     dest_path: str,
     branch: str,
     token: str,
     commit_message: str,
 ) -> str:
     """
-    Create or update `dest_path` in the GitLab project `project` (a
-    "namespace/project" or "group/subgroup/project" path, e.g.
-    "rod-library/resolver") on `branch` with the current contents of
-    `file_path`, via the GitLab Repository Files API (stdlib-only -- no
-    external HTTP library required). `gitlab_url` is the GitLab instance's
-    base URL (e.g. "https://git.uni.edu").
+    Create or update `dest_path` in the GitHub repository `repo` (owner/name,
+    e.g. "rodlibrary/Resolver") on `branch` with the current contents of
+    `file_path`, via the GitHub repository contents API (stdlib only).
 
-    A GitLab *group* URL (such as .../groups/redirects) is not itself a
-    place files can be pushed to -- a group can hold several projects, so
-    the caller must supply the specific project within it.
-
-    Looks up whether the file already exists first, so this correctly
-    updates an existing file (PUT) instead of trying to create one that's
-    already there (which the GitLab API rejects).
+    GitHub needs the current blob SHA to update an existing file, so this
+    looks it up first; a file that isn't there yet is created.
 
     Returns the file's web URL on success. Raises RuntimeError with a
     readable message (never containing the token) on any failure.
     """
-    project_id = urllib.parse.quote(project, safe="")
-    file_id = urllib.parse.quote(dest_path, safe="")
-    api_base = (
-        f"{gitlab_url.rstrip('/')}/api/v4/projects/{project_id}"
-        f"/repository/files/{file_id}"
-    )
-    headers = {
-        "PRIVATE-TOKEN": token,
-        "Content-Type": "application/json",
-        "User-Agent": "generate_arks.py",
-    }
-
-    file_exists = False
-    lookup_req = urllib.request.Request(
-        f"{api_base}?ref={urllib.parse.quote(branch, safe='')}",
-        headers=headers, method="GET",
+    url = _github_contents_url(api_url, repo, dest_path)
+    sha = None
+    lookup = urllib.request.Request(
+        f"{url}?ref={urllib.parse.quote(branch, safe='')}",
+        headers=_github_headers(token), method="GET",
     )
     try:
-        with urllib.request.urlopen(lookup_req) as resp:
-            resp.read()
-            file_exists = True
+        with urllib.request.urlopen(lookup, timeout=120) as resp:
+            info = json.loads(resp.read() or b"{}")
+            sha = info.get("sha") if isinstance(info, dict) else None
     except urllib.error.HTTPError as e:
-        if e.code != 404:
-            raise RuntimeError(
-                f"lookup of existing file failed ({e.code}): "
-                f"{e.read().decode('utf-8', 'ignore')}"
-            ) from e
-        # 404 just means the file doesn't exist in the project yet.
+        message = _github_error(e)
+        if e.code != 404 or "no commit found" in message.lower():
+            hint = _github_token_hint(repo) if e.code in (401, 403) else ""
+            raise RuntimeError(f"lookup of {dest_path} failed ({e.code}): {message}{hint}") from e
+        # 404 just means the file doesn't exist in the repository yet.
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"can't reach {api_url}: {e.reason}") from e
 
     with open(file_path, "rb") as f:
         content_b64 = base64.b64encode(f.read()).decode("ascii")
-
-    body = {
-        "branch": branch,
-        "content": content_b64,
-        "encoding": "base64",
-        "commit_message": commit_message,
-    }
+    body = {"message": commit_message, "content": content_b64, "branch": branch}
+    if sha:
+        body["sha"] = sha
 
     req = urllib.request.Request(
-        api_base,
+        url,
         data=json.dumps(body).encode("utf-8"),
-        headers=headers,
-        method="PUT" if file_exists else "POST",
+        headers={**_github_headers(token), "Content-Type": "application/json"},
+        method="PUT",
     )
     try:
-        with urllib.request.urlopen(req) as resp:
-            resp.read()
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            result = json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as e:
+        message = _github_error(e)
         hint = ""
-        if e.code in (401, 403):
-            hint = (
-                f" -- the token isn't allowed to push to {branch}. A protected branch "
-                "(main is protected by default) only accepts pushes from Maintainers: "
-                "create the token with the Maintainer role, or allow Developers to push "
-                "in Settings > Repository > Protected branches. check_gitlab.py tests this."
-            )
-        raise RuntimeError(
-            f"push failed ({e.code}): {e.read().decode('utf-8', 'ignore')[:300]}{hint}"
-        ) from e
+        if e.code in (401, 403, 404):
+            hint = _github_token_hint(repo)
+            if "protected" in message.lower() or "rule" in message.lower():
+                hint = (f" -- a branch protection rule or ruleset on {branch} blocks direct "
+                        "pushes. Allow the token's account to bypass it, or remove the rule.")
+        elif e.code in (409, 422):
+            hint = (f" -- {dest_path} changed in {repo} while this script was running. "
+                    "Run the script again: it pulls the newer copy first.")
+        raise RuntimeError(f"push failed ({e.code}): {message}{hint}") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"can't reach {api_url}: {e.reason}") from e
 
-    return (
-        f"{gitlab_url.rstrip('/')}/{project}/-/blob/{branch}/{dest_path}"
-    )
+    html = ((result.get("content") or {}).get("html_url")) if isinstance(result, dict) else None
+    return html or f"https://github.com/{repo.strip('/')}/blob/{branch}/{dest_path.lstrip('/')}"
 
 
 def write_csv(results: list[dict], output_csv: str) -> None:
@@ -842,7 +903,7 @@ def main() -> None:
             + ", ".join(SLIM_FIELDS)
             + " (p_path is the manifest's target_url; only active rows with "
             "a target are included). Rebuilt from the resolve manifest on "
-            f"every run and not pushed to GitLab. (default: {DEFAULT_SLIM_MANIFEST})"
+            f"every run and not pushed to GitHub. (default: {DEFAULT_SLIM_MANIFEST})"
         ),
     )
     parser.add_argument(
@@ -851,73 +912,61 @@ def main() -> None:
         help="Do not write the slim ark/p_path export.",
     )
     parser.add_argument(
-        "--gitlab-manifest-path",
-        default=None,
-        help=(
-            "Path within the project for the resolve manifest (default: "
-            "same filename as --resolve-manifest, at the project root)."
-        ),
-    )
-    parser.add_argument(
-        "--push-to-gitlab",
+        "--push-to-github",
         action="store_true",
         help=(
-            "Pull the GitLab copies of the master list and resolve manifest "
+            "Pull the GitHub copies of the master list and resolve manifest "
             "and merge them into the local files before minting, then push "
-            "both back after the run, via the GitLab Repository Files API. "
-            "Requires a token (see --gitlab-token-env)."
+            "both back after the run. Requires a token (see --github-token-env)."
         ),
     )
     parser.add_argument(
-        "--gitlab-url",
-        default=DEFAULT_GITLAB_URL,
-        help="Base URL of the GitLab instance (default: https://git.uni.edu).",
+        "--github-repo",
+        default=os.environ.get("RESOLVER_REPO") or DEFAULT_GITHUB_REPO,
+        help=f"Resolver repository as owner/name (default: {DEFAULT_GITHUB_REPO}).",
     )
     parser.add_argument(
-        "--gitlab-project",
-        default=DEFAULT_GITLAB_PROJECT,
-        help=(
-            "Target project as 'namespace/project' (default: "
-            f"{DEFAULT_GITLAB_PROJECT}). Note this must be a specific project, "
-            "not a group -- e.g. the 'rod-library' GROUP can hold several "
-            "projects, so a project within it (such as 'rod-library/resolver') "
-            "has to be named explicitly."
-        ),
+        "--github-branch",
+        default=os.environ.get("RESOLVER_BRANCH") or DEFAULT_GITHUB_BRANCH,
+        help=f"Branch to pull from and commit to (default: {DEFAULT_GITHUB_BRANCH}).",
     )
     parser.add_argument(
-        "--gitlab-path",
+        "--github-path",
         default=None,
         help=(
-            "Path within the project to write the master list to (default: "
-            "same filename as --master-list, written to the project root)."
+            "Path within the repository for the master list (default: same "
+            "filename as --master-list, at the repository root)."
         ),
     )
     parser.add_argument(
-        "--gitlab-branch",
-        default="main",
+        "--github-manifest-path",
+        default=None,
         help=(
-            "Branch to commit to (default: main -- some GitLab projects "
-            "default to 'master' instead, so check yours if the push fails "
-            "with a branch-not-found error)."
+            "Path within the repository for the resolve manifest (default: "
+            "same filename as --resolve-manifest, at the repository root)."
         ),
     )
     parser.add_argument(
-        "--gitlab-token-env",
-        default="GITLAB_TOKEN",
+        "--github-token-env",
+        default=DEFAULT_GITHUB_TOKEN_ENV,
         help=(
-            "Name of the environment variable holding a GitLab token "
-            "(personal or project access token) with 'api' "
-            "scope for the project (default: GITLAB_TOKEN). The token is "
-            "read from the environment only -- never pass it as a "
-            "command-line argument, where it could leak into shell history "
-            "or process listings."
+            "Name of the environment variable holding a GitHub token with "
+            "Contents: Read and write on the repository (default: "
+            f"{DEFAULT_GITHUB_TOKEN_ENV}). The token is read from the environment "
+            "only -- never pass it as a command-line argument, where it could "
+            "leak into shell history or process listings."
         ),
+    )
+    parser.add_argument(
+        "--github-api-url",
+        default=DEFAULT_GITHUB_API_URL,
+        help=f"GitHub API base URL (default: {DEFAULT_GITHUB_API_URL}).",
     )
     parser.add_argument(
         "--no-pull",
         action="store_true",
         help=(
-            "With --push-to-gitlab, don't pull and merge the GitLab copies "
+            "With --push-to-github, don't pull and merge the GitHub copies "
             "before minting (not recommended: the push then overwrites them "
             "with the local files)."
         ),
@@ -933,52 +982,52 @@ def main() -> None:
             "(PRESERVICA_* environment variables or credentials.properties)."
         ),
     )
+    reject_gitlab_options()
     args = parser.parse_args()
 
-    gitlab_paths = {
-        "master": args.gitlab_path or os.path.basename(args.master_list),
-        "resolve": args.gitlab_manifest_path or os.path.basename(args.resolve_manifest),
+    github_paths = {
+        "master": args.github_path or os.path.basename(args.master_list),
+        "resolve": args.github_manifest_path or os.path.basename(args.resolve_manifest),
     }
-    token = os.environ.get(args.gitlab_token_env)
+    token = (os.environ.get(args.github_token_env) or "").strip()
 
     if not args.no_resolve_manifest:
         migrate_legacy_manifest(args.resolve_manifest)
 
-    # Bring in what GitLab already has before minting, so blades stay unique
+    # Bring in what GitHub already has before minting, so blades stay unique
     # across computers and the push never overwrites newer rows.
-    if args.push_to_gitlab and not args.no_pull:
+    if args.push_to_github and not args.no_pull:
         if not token:
             sys.exit(
-                f"{args.gitlab_token_env} is not set, so the GitLab copies can't be pulled "
-                "and nothing was minted. Set it (export GITLAB_TOKEN=glpat-...), or leave "
-                "off --push-to-gitlab to mint with the local files only."
+                f"{args.github_token_env} is not set, so the GitHub copies can't be pulled "
+                f"and nothing was minted. Set it (export {args.github_token_env}=github_pat_...), "
+                "or leave off --push-to-github to mint with the local files only."
             )
-        else:
-            pulls = []
-            if not args.no_master_list:
-                pulls.append((args.master_list, gitlab_paths["master"]))
-            if not args.no_resolve_manifest:
-                pulls.append((args.resolve_manifest, gitlab_paths["resolve"]))
-            for local_path, dest_path in pulls:
-                try:
-                    remote = fetch_file_from_gitlab(
-                        args.gitlab_url, args.gitlab_project, dest_path,
-                        args.gitlab_branch, token,
-                    )
-                except RuntimeError as e:
-                    sys.exit(
-                        f"Couldn't pull {dest_path} from GitLab, so nothing was minted: {e}\n"
-                        "Check the token and --gitlab-project, or use --no-pull to run "
-                        "with the local files only."
-                    )
-                from_gitlab, local_only = merge_into_local(local_path, remote)
-                if remote is None:
-                    print(f"{dest_path} isn't in GitLab yet; it will be created by the push.")
-                else:
-                    print(
-                        f"Pulled {dest_path} from GitLab ({from_gitlab} row(s)); "
-                        f"{local_only} local row(s) not yet in GitLab kept."
-                    )
+        pulls = []
+        if not args.no_master_list:
+            pulls.append((args.master_list, github_paths["master"]))
+        if not args.no_resolve_manifest:
+            pulls.append((args.resolve_manifest, github_paths["resolve"]))
+        for local_path, dest_path in pulls:
+            try:
+                remote = fetch_file_from_github(
+                    args.github_api_url, args.github_repo, dest_path,
+                    args.github_branch, token,
+                )
+            except RuntimeError as e:
+                sys.exit(
+                    f"Couldn't pull {dest_path} from GitHub, so nothing was minted: {e}\n"
+                    "Check the token and --github-repo, or use --no-pull to run "
+                    "with the local files only."
+                )
+            from_github, local_only = merge_into_local(local_path, remote)
+            if remote is None:
+                print(f"{dest_path} isn't in {args.github_repo} yet; it will be created by the push.")
+            else:
+                print(
+                    f"Pulled {dest_path} from GitHub ({from_github} row(s)); "
+                    f"{local_only} local row(s) not yet in GitHub kept."
+                )
 
     rows = read_rows(args.input_csv)
     if args.no_master_list:
@@ -1028,52 +1077,52 @@ def main() -> None:
         slim_rows = write_slim_manifest(args.resolve_manifest, args.slim_manifest)
         print(f"Wrote {slim_rows} row(s) (ark, p_path) to {args.slim_manifest}")
 
-    if args.push_to_gitlab:
-        # (local file, destination path in project, commit message)
+    if args.push_to_github:
+        # (local file, destination path in the repository, commit message)
         to_push = []
         source_name = os.path.basename(args.input_csv)
         if not args.no_master_list:
             to_push.append((
                 args.master_list,
-                gitlab_paths["master"],
+                github_paths["master"],
                 f"Update ARK master list ({appended} new from {source_name})",
             ))
         if not args.no_resolve_manifest:
             to_push.append((
                 args.resolve_manifest,
-                gitlab_paths["resolve"],
+                github_paths["resolve"],
                 f"Update resolve manifest ({manifest_appended} new from {source_name}"
                 + (f", {matched} Preservica reference(s) added" if matched else "") + ")",
             ))
 
         if not to_push:
             print(
-                "Skipped GitLab push: both the master list and the resolve "
+                "Skipped GitHub push: both the master list and the resolve "
                 "manifest are disabled, so there is nothing to push.",
                 file=sys.stderr,
             )
-        elif not args.gitlab_project:
+        elif not args.github_repo:
             print(
-                "Skipped GitLab push: --gitlab-project is required with "
-                "--push-to-gitlab.",
+                "Skipped GitHub push: --github-repo is required with "
+                "--push-to-github.",
                 file=sys.stderr,
             )
         elif not token:
             print(
-                f"Skipped GitLab push: environment variable "
-                f"{args.gitlab_token_env} is not set.",
+                f"Skipped GitHub push: environment variable "
+                f"{args.github_token_env} is not set.",
                 file=sys.stderr,
             )
         else:
             for local_path, dest_path, commit_message in to_push:
                 try:
-                    url = push_file_to_gitlab(
-                        local_path, args.gitlab_url, args.gitlab_project,
-                        dest_path, args.gitlab_branch, token, commit_message,
+                    url = push_file_to_github(
+                        local_path, args.github_api_url, args.github_repo,
+                        dest_path, args.github_branch, token, commit_message,
                     )
-                    print(f"Pushed {local_path} to GitLab: {url}")
+                    print(f"Pushed {local_path} to GitHub: {url}")
                 except RuntimeError as e:
-                    print(f"GitLab push of {local_path} failed: {e}", file=sys.stderr)
+                    print(f"GitHub push of {local_path} failed: {e}", file=sys.stderr)
 
     ok = sum(1 for r in results if r["status"].startswith("OK"))
     errors = sum(1 for r in results if r["status"] == "ERROR")

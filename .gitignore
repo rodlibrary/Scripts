@@ -11,7 +11,7 @@ __pycache__/
 rclone.conf
 key.json
 
-# ARK working files: the copies of record live in the GitLab resolver repository
+# ARK working files: the copies of record live in the resolver repository (github.com/rodlibrary/Resolver)
 arks/resolve.csv
 arks/redirects.csv
 arks/ark_master_list.csv
