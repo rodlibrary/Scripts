@@ -6,7 +6,7 @@ Each folder has its own README with setup steps, commands and options. Open a fo
 
 | Folder | What it's for | Runs on |
 |---|---|---|
-| [**arks**](arks/) | Generate Archival Resource Keys (ARKs) and publish them to the resolver repository, [rodlibrary/Resolver](https://github.com/rodlibrary/Resolver) (`resolve.csv`); fill in each ARK's Preservica reference from Preservica's MODS (weekly on GitHub Actions) | Local / GitHub Actions |
+| [**arks**](arks/) | Generate Archival Resource Keys (ARKs) and publish them to the resolver repository, [rodlibrary/Resolver](https://github.com/rodlibrary/Resolver) (`resolve.csv`: `ark`, `p_path`, the same format as `redirects.csv` in [rodlibrary/Redirects](https://github.com/rodlibrary/Redirects)); add each ARK once it's in an asset's MODS in Preservica (weekly on GitHub Actions) | Local / GitHub Actions |
 | [**checksums**](checksums/) | Generate SHA-256 checksums for every file in a folder | Windows |
 | [**file_mgmt**](file_mgmt/) | Sort files into folders by name, merge PDFs per folder, remove empty folders | Windows |
 | [**google_drive**](google_drive/) | Copy Google Drive folders to archival storage with rclone, keeping file dates and a metadata manifest | HPC |

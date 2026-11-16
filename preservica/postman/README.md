@@ -90,7 +90,7 @@ Columns:
 | Column | What it holds |
 |---|---|
 | `preservica_reference` | The asset's reference (UUID) |
-| `preservica_ref` | `IO_<UUID>`, as in the Redirects repository's ARK manifest |
+| `preservica_ref` | `IO_<UUID>`, as in `match_preservica.py`'s `match_report.csv` |
 | `title` | The asset's title |
 | `ark_blade (Archival Resource Key)` | The Archival Resource Key identifier, as entered |
 | `location_url (Location (URL))` | The Location (URL), as entered |

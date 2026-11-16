@@ -16,7 +16,8 @@ It checks, in order, and stops at the first problem with an explanation:
   2. the token is set and accepted;
   3. the token can see the repository (default rodlibrary/Resolver);
   4. the branch (default main) exists;
-  5. resolve.csv and ark_master_list.csv can be read from it;
+  5. resolve.csv and ark_master_list.csv can be read from it (and resolve.csv
+     has the header ark,p_path);
   6. a push works: it creates a temporary branch, pushes a small test file to
      it the same way the ARK scripts push resolve.csv, and deletes the branch
      again. The main branch is never written to.
@@ -162,8 +163,14 @@ def main() -> int:
         if data is None:
             missing.append(path)
         else:
-            rows = max(0, len(data.decode("utf-8-sig", "replace").strip().splitlines()) - 1)
+            text = data.decode("utf-8-sig", "replace")
+            rows = max(0, len(text.strip().splitlines()) - 1)
             ok(f"{path} can be read ({rows} row(s))")
+            header = [h.strip().lower() for h in (text.splitlines() or [""])[0].split(",")]
+            if path == ga.DEFAULT_RESOLVE_MANIFEST and rows and header != list(ga.RESOLVE_FIELDS):
+                step[0] += 1
+                print(f"  NOTE {step[0]}. {path}'s header is {','.join(header)}, not ark,p_path. The scripts "
+                      "convert it the next time they write it; check_resolve.py --from-github checks every row.")
     if missing:
         step[0] += 1
         print(f"  NOTE {step[0]}. Not on branch {branch}: {', '.join(missing)}. The scripts would create them on the "

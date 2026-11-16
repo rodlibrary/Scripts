@@ -1,5 +1,6 @@
 """
-Offline tests for generate_arks.py and match_preservica.py, with a fake
+Offline tests for generate_arks.py, match_preservica.py, check_resolve.py
+and check_github.py, with a fake
 GitHub and a fake Preservica (MODS laid out like Rod Library's template).
 
     python3 -m unittest discover -s arks/tests
@@ -159,7 +160,15 @@ def read(path):
 
 
 RESOLVE_HEADER = list(ga.RESOLVE_FIELDS)
+LEGACY_HEADER = list(ga.LEGACY_RESOLVE_FIELDS)
 MASTER_HEADER = list(ga.MASTER_LIST_FIELDS)
+ARK = "https://library.uni.edu/ark:/32498/"
+PORTAL = "https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C"
+import check_resolve as cr  # noqa: E402
+
+
+def master_row(name, blade=None, shoulder=""):
+    return ["t", f"ark:/32498/{name}", blade or name, "32498", shoulder, "i", "t", "f", "2"]
 
 
 class Base(unittest.TestCase):
@@ -170,6 +179,7 @@ class Base(unittest.TestCase):
         self.env = mock.patch.dict(os.environ, {"GITHUB_TOKEN": "tok", "PRESERVICA_USERNAME": "svc",
                                                 "PRESERVICA_PASSWORD": "pw", "GITHUB_STEP_SUMMARY": ""})
         self.env.start()
+        os.environ.pop("ALLOWED_TARGET_HOSTS", None)
 
     def tearDown(self):
         self.env.stop()
@@ -180,46 +190,78 @@ class Base(unittest.TestCase):
         out = io.StringIO()
         with mock.patch.object(sys, "argv", ["x", *argv]), contextlib.redirect_stdout(out), \
                 contextlib.redirect_stderr(out):
-            module.main()
-        return out.getvalue()
+            result = module.main()
+        return out.getvalue() if result is None else (result, out.getvalue())
 
 
 class GenerateArksTest(Base):
     def test_push_pulls_and_merges_github_copies_and_writes_resolve_csv(self):
         github = FakeGitHub({
             "ark_master_list.csv": "timestamp,ark,ark_blade,naan,shoulder,identifier,title,source_file,row\r\n"
-                                   "2026-10-01T10:00:00,ark:/32498/s3remote01,remote01,32498,s3,r1,Remote,old.csv,2\r\n",
-            "resolve.csv": "dc_path,dc_article,ark,preservica_ref,target_url,status,notes\r\n"
-                           "etd/1,etd/11,32498/s3remote01,IO_" + uid(9) + ",https://x/1,active,\r\n",
+                                   "2026-10-01T10:00:00,ark:/32498/s3remote01,remote01,32498,s3,r1,Remote,old.csv,2",
+            # no line break at the end, as in rodlibrary/Resolver
+            "resolve.csv": f"ark,p_path\r\n{ARK}s3remote01,{PORTAL}{uid(9)}",
         })
-        # A local resolve.csv that is out of date (no Preservica reference) plus a row GitHub lacks.
-        write("resolve.csv", RESOLVE_HEADER, [["etd/1", "etd/11", "32498/s3remote01", "", "https://x/1", "active", ""],
-                                              ["etd/2", "", "32498/s3local0001", "", "", "unmatched", ""]])
-        write("arks.csv", ["identifier", "title", "shoulder", "url"], [["n1", "New one", "s3", "https://y/1"]])
+        # A local resolve.csv that is out of date, plus a row GitHub lacks.
+        write("resolve.csv", RESOLVE_HEADER, [[f"{ARK}s3remote01", "https://digital.library.uni.edu/old"],
+                                              [f"{ARK}s3local0001", "410"]])
+        write("arks.csv", ["identifier", "title", "shoulder", "url"],
+              [["n1", "New one", "s3", "https://digital.library.uni.edu/y/1"], ["n2", "No url yet", "s3", ""]])
         with fake_net(github):
             out = self.main(ga, "out", "--push-to-github")
         self.assertIn("Pulled resolve.csv from GitHub (1 row(s)); 1 local row(s) not yet in GitHub kept.", out)
+        self.assertIn("Added 1 ARK(s) to resolve.csv; 1 with no url wait for match_preservica.py", out)
         rows = read("resolve.csv")
-        self.assertEqual([r["ark"] for r in rows][:2], ["32498/s3remote01", "32498/s3local0001"])
-        self.assertEqual(rows[0]["preservica_ref"], "IO_" + uid(9))       # GitHub's newer value kept
+        self.assertEqual([r["ark"] for r in rows][:2], [f"{ARK}s3remote01", f"{ARK}s3local0001"])
+        self.assertEqual(rows[0]["p_path"], PORTAL + uid(9))                 # GitHub's newer value kept
         self.assertEqual(len(rows), 3)
-        self.assertTrue(rows[2]["ark"].startswith("32498/s3"))
-        self.assertEqual(rows[2]["target_url"], "https://y/1")
-        # The new ARK can't reuse the blade minted elsewhere, and both files were pushed to the resolver.
+        self.assertTrue(rows[2]["ark"].startswith(ARK + "s3"))
+        self.assertEqual(rows[2]["p_path"], "https://digital.library.uni.edu/y/1")
         self.assertEqual({p[1] for p in github.pushes}, {"ark_master_list.csv", "resolve.csv"})
-        self.assertIn("32498/s3remote01", github.files["resolve.csv"])
-        self.assertIn("IO_" + uid(9), github.files["resolve.csv"])
-        self.assertEqual(len(read("ark_master_list.csv")), 2)
-        self.assertFalse(os.path.exists("redirects.csv"))
+        self.assertTrue(github.files["resolve.csv"].startswith("ark,p_path\r\n"))
+        self.assertTrue(github.files["resolve.csv"].endswith("\r\n"))
+        master = read("ark_master_list.csv")                  # the remote row isn't joined to the new ones
+        self.assertEqual([m["ark"][:13] for m in master], ["ark:/32498/s3"] * 3)
+        self.assertEqual(master[0]["ark"], "ark:/32498/s3remote01")
+        self.assertEqual(ga.check_resolve(rows, text=text("resolve.csv")), [])
 
-    def test_first_run_copies_redirects_csv(self):
-        write("redirects.csv", RESOLVE_HEADER, [["etd/1", "", "32498/abc", "", "https://x", "active", ""]])
+    def test_older_seven_column_resolve_csv_is_converted(self):
+        write("resolve.csv", LEGACY_HEADER, [
+            ["etd/1", "", "32498/s3active01", "IO_" + uid(1), PORTAL + uid(1), "active", ""],
+            ["etd/2", "", "32498/s3gone0001", "", "", "withdrawn", ""],
+            ["", "", "32498/s3waiting1", "", "", "unmatched", ""],
+        ])
         write("arks.csv", ["identifier", "title"], [["n1", "One"]])
         out = self.main(ga, "out", "--no-master-list")
-        self.assertIn("resolve.csv replaces redirects.csv", out)
-        rows = read("resolve.csv")
-        self.assertEqual([r["ark"] for r in rows][0], "32498/abc")
-        self.assertEqual(len(rows), 2)
+        self.assertIn("older seven-column layout; converted it to ark, p_path (2 row(s); 1 unmatched", out)
+        with open("resolve.csv", newline="", encoding="utf-8") as f:
+            self.assertEqual(next(csv.reader(f)), RESOLVE_HEADER)
+        self.assertEqual(read("resolve.csv"), [{"ark": f"{ARK}s3active01", "p_path": PORTAL + uid(1)},
+                                               {"ark": f"{ARK}s3gone0001", "p_path": "410"}])
+
+    def test_url_rules_match_redirects_csv(self):
+        write("arks.csv", ["identifier", "title", "url", "preservica_ref"], [
+            ["ok", "Portal", PORTAL + uid(3), ""],
+            ["gone", "Withdrawn", "410", ""],
+            ["ref", "From reference", "", "IO_" + uid(4)],
+            ["pipe", "Raw pipe", "https://uni.access.preservica.com/portal/en-US/asset/sdb:IO|" + uid(5), ""],
+            ["http", "Not https", "http://digital.library.uni.edu/x", ""],
+            ["host", "Other host", "https://www.google.com/", ""],
+        ])
+        out = self.main(ga, "out")
+        self.assertIn("Processed 6 row(s): 3 OK, 3 error(s).", out)
+        self.assertIn("must be percent-encoded", out)
+        self.assertIn("must be a full address starting with https://", out)
+        self.assertIn("isn't one of uni.access.preservica.com, digital.library.uni.edu", out)
+        self.assertEqual(len(read("ark_master_list.csv")), 3)          # no ARK minted for a bad row
+        self.assertEqual([r["p_path"] for r in read("resolve.csv")], [PORTAL + uid(3), "410", PORTAL + uid(4)])
+
+    def test_old_columns_and_options_are_noted_not_fatal(self):
+        write("arks.csv", ["identifier", "title", "dc_path", "status"], [["n1", "One", "etd/1", "unmatched"]])
+        out = self.main(ga, "out", "--no-master-list", "--slim-manifest", "paths.csv", "--no-slim-manifest")
+        self.assertIn("--slim-manifest ignored", out)
+        self.assertFalse(os.path.exists("paths.csv") or os.path.exists("resolve_paths.csv"))
+        self.assertIn("dc_path ignored (old ScholarWorks addresses go in rodlibrary/Redirects", read("out.csv")[0]["notes"])
 
     def test_missing_token_mints_nothing(self):
         write("arks.csv", ["identifier", "title"], [["n1", "One"]])
@@ -238,58 +280,67 @@ class GenerateArksTest(Base):
         self.assertIn("nothing was minted", str(e.exception))
         self.assertFalse(os.path.exists("resolve.csv"))
 
-    def test_slim_export_has_only_ark_and_p_path_for_active_rows_with_a_target(self):
-        write("resolve.csv", RESOLVE_HEADER, [
-            ["etd/1", "", "32498/s3active001", "", "https://x/1", "active", ""],
-            ["etd/2", "", "32498/s3notarget1", "", "", "active", ""],
-            ["etd/3", "", "32498/s3withdrawn", "", "https://x/3", "withdrawn", ""],
-            ["etd/4", "", "32498/s3unmatched", "", "https://x/4", "unmatched", ""],
-        ])
-        write("arks.csv", ["identifier", "title", "url"], [["n1", "New one", "https://y/1"], ["n2", "No url", ""]])
-        out = self.main(ga, "out", "--no-master-list")
-        self.assertIn("Wrote 2 row(s) (ark, p_path) to resolve_paths.csv", out)
-        with open("resolve_paths.csv", newline="", encoding="utf-8") as f:
-            self.assertEqual(next(csv.reader(f)), ["ark", "p_path"])
-        slim = read("resolve_paths.csv")
-        self.assertEqual(slim[0], {"ark": "32498/s3active001", "p_path": "https://x/1"})
-        self.assertTrue(slim[1]["ark"].startswith("32498/"))
-        self.assertEqual(slim[1]["p_path"], "https://y/1")
-        self.assertEqual(len(slim), 2)
-        # resolve.csv itself keeps all of its columns and rows (4 old + 2 minted).
-        with open("resolve.csv", newline="", encoding="utf-8") as f:
-            self.assertEqual(next(csv.reader(f)), RESOLVE_HEADER)
-        self.assertEqual(len(read("resolve.csv")), 6)
+    def test_a_resolve_csv_with_problems_stops_minting(self):
+        github = FakeGitHub({"ark_master_list.csv": ",".join(MASTER_HEADER) + "\r\n",
+                             "resolve.csv": f"ark,p_path\r\n{ARK}abc,https://example.com/x\r\n{ARK}abc,410\r\n"})
+        write("arks.csv", ["identifier", "title"], [["n1", "One"]])
+        with fake_net(github), self.assertRaises(SystemExit) as e:
+            self.main(ga, "out", "--push-to-github")
+        self.assertIn("2 problem(s), so nothing was minted", str(e.exception))
+        self.assertIn("line 3: " + ARK + "abc is already on line 2", str(e.exception))
+        self.assertEqual(github.pushes, [])
 
-    def test_slim_export_is_not_pushed_and_can_be_renamed_or_disabled(self):
-        github = FakeGitHub({"ark_master_list.csv": MASTER_HEADER and ",".join(MASTER_HEADER) + "\r\n",
-                             "resolve.csv": ",".join(RESOLVE_HEADER) + "\r\n"})
-        write("arks.csv", ["identifier", "title", "url"], [["n1", "One", "https://y/1"]])
+
+class CheckResolveTest(Base):
+    def test_good_file_passes_and_lists_waiting_arks(self):
+        write("resolve.csv", RESOLVE_HEADER, [[f"{ARK}abc", PORTAL + uid(1)], [f"{ARK}def", "410"]])
+        write("ark_master_list.csv", MASTER_HEADER, [master_row("abc"), master_row("def"), master_row("ghi")])
+        code, out = self.main(cr, "--master-list", "ark_master_list.csv")
+        self.assertEqual(code, 0, out)
+        self.assertIn("2 ARK(s) (1 redirect, 1 withdrawn); 0 problem(s)", out)
+        self.assertIn("3 ARK(s) minted; 1 not in resolve.csv yet", out)
+
+    def test_problems_are_named_by_line(self):
+        with open("resolve.csv", "w", newline="") as f:
+            f.write(f"ark,p_path\r\n32498/abc,{PORTAL}{uid(1)}\r\n{ARK}a-bc,410\r\n"
+                    f"{ARK}x,https://uni.access.preservica.com/a b\r\n"
+                    f"https://library.uni.edu/ark:/99999/z,410")
+        code, out = self.main(cr)
+        self.assertEqual(code, 1)
+        self.assertIn("line 2: ark '32498/abc' should be a full address like " + ARK, out)
+        self.assertIn("line 3: " + ARK + "a-bc is already on line 2", out)
+        self.assertIn("line 4: p_path contains a space", out)
+        self.assertIn("line 5: ark '" + "https://library.uni.edu/ark:/99999/z' isn't under our NAAN 32498", out)
+        self.assertIn("doesn't end with a line break", out)
+
+    def test_old_layout_is_reported(self):
+        write("resolve.csv", LEGACY_HEADER, [])
+        code, out = self.main(cr)
+        self.assertEqual(code, 1)
+        self.assertIn("older seven-column layout", out)
+
+    def test_from_github(self):
+        github = FakeGitHub({"resolve.csv": f"ark,p_path\r\n{ARK}abc,410\r\n",
+                             "ark_master_list.csv": ",".join(MASTER_HEADER) + "\r\n" + ",".join(master_row("abc")) + "\r\n"})
         with fake_net(github):
-            self.main(ga, "out", "--push-to-github", "--slim-manifest", "paths.csv")
-        self.assertEqual({p[1] for p in github.pushes}, {"ark_master_list.csv", "resolve.csv"})
-        self.assertEqual(len(read("paths.csv")), 1)
-        self.assertFalse(os.path.exists("resolve_paths.csv"))
-
-        os.remove("paths.csv")
-        write("arks.csv", ["identifier", "title", "url"], [["n2", "Two", "https://y/2"]])
-        self.main(ga, "out2", "--no-master-list", "--no-slim-manifest", "--slim-manifest", "paths.csv")
-        self.assertFalse(os.path.exists("paths.csv"))
+            code, out = self.main(cr, "--from-github")
+        self.assertEqual(code, 0, out)
+        self.assertIn("rodlibrary/Resolver/resolve.csv: 1 ARK(s)", out)
 
 
 class MatchTest(Base):
     def setUp(self):
         super().setUp()
         write("resolve.csv", RESOLVE_HEADER, [
-            ["", "", "32498/s3abc123", "", "", "unmatched", ""],          # 1: blade without shoulder + URL
-            ["etd/2", "", "32498/xyz", "", "", "", "old note"],            # 2: bare blade
-            ["", "", "32498/dup", "", "", "unmatched", ""],                # 3: in two assets
-            ["", "", "32498/taken", "IO_" + uid(8), "https://dc/4", "active", ""],  # 4: other ref already
-            ["", "", "32498/withdrawn1", "", "", "withdrawn", ""],         # 5: withdrawn stays withdrawn
-            ["", "", "32498/keep", "", "https://dc/6", "active", ""],      # 6: has a target already
+            [f"{ARK}taken", PORTAL + uid(8)],                         # another asset already
+            [f"{ARK}withdrawn1", "410"],                              # withdrawn stays withdrawn
+            [f"{ARK}keep", "https://digital.library.uni.edu/keep"],   # sent elsewhere by hand
         ])
-        write("ark_master_list.csv", MASTER_HEADER, [["t", "ark:/32498/s3abc123", "abc123", "32498", "s3", "i", "t", "f", "2"]])
+        write("ark_master_list.csv", MASTER_HEADER, [
+            master_row("s3abc123", "abc123", "s3"), master_row("xyz"), master_row("dup"),
+            master_row("taken"), master_row("withdrawn1"), master_row("keep")])
         self.pv = FakePreservica({
-            1: ("abc123", "https://n2t.net/ark:/32498/s3abc123"),
+            1: ("abc123", "https://n2t.net/ark:/32498/s3abc123"),   # bare blade + URL
             2: ("xyz", ""),
             3: ("dup", ""), 4: ("", "https://n2t.net/ark:/32498/dup"),
             5: ("taken", ""),
@@ -301,34 +352,37 @@ class MatchTest(Base):
             11: ("abc123", "https://n2t.net/ark:/32498/xyz"),   # blade and URL disagree
         })
 
-    def test_match_updates_only_unambiguous_rows(self):
+    def test_match_adds_only_unambiguous_arks(self):
         with fake_net(self.pv):
             out = self.main(mp, "--workers", "2")
-        rows = read("resolve.csv")
-        r = {row["ark"]: row for row in rows}
-        portal = "https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C{}"
-        # 1 and 2 are each claimed by asset 11 as well (blade vs URL disagree), so asset 11 is a conflict only.
-        self.assertEqual(r["32498/s3abc123"]["preservica_ref"], "IO_" + uid(1))
-        self.assertEqual(r["32498/s3abc123"]["target_url"], portal.format(uid(1)))
-        self.assertEqual(r["32498/s3abc123"]["status"], "active")
-        self.assertIn("Preservica IO_" + uid(1) + " matched", r["32498/s3abc123"]["notes"])
-        self.assertEqual(r["32498/xyz"]["preservica_ref"], "IO_" + uid(2))
-        self.assertEqual(r["32498/xyz"]["status"], "active")
-        self.assertTrue(r["32498/xyz"]["notes"].startswith("old note; "))
-        self.assertEqual(r["32498/dup"]["preservica_ref"], "")                # in two assets: left alone
-        self.assertEqual(r["32498/taken"]["preservica_ref"], "IO_" + uid(8))   # different ref: left alone
-        self.assertEqual(r["32498/withdrawn1"]["status"], "withdrawn")
-        self.assertEqual(r["32498/withdrawn1"]["preservica_ref"], "IO_" + uid(7))
-        self.assertEqual(r["32498/keep"]["target_url"], "https://dc/6")       # existing target kept
-        self.assertEqual(r["32498/keep"]["preservica_ref"], "IO_" + uid(8))
+        r = {row["ark"]: row["p_path"] for row in read("resolve.csv")}
+        self.assertEqual(r[f"{ARK}s3abc123"], PORTAL + uid(1))
+        self.assertEqual(r[f"{ARK}xyz"], PORTAL + uid(2))
+        self.assertNotIn(f"{ARK}dup", r)                              # in two assets: not added
+        self.assertEqual(r[f"{ARK}taken"], PORTAL + uid(8))           # different asset: left alone
+        self.assertEqual(r[f"{ARK}withdrawn1"], "410")
+        self.assertEqual(r[f"{ARK}keep"], "https://digital.library.uni.edu/keep")
+        self.assertEqual(len(r), 5)
         rep = {x["preservica_ref"][3:11]: x["outcome"] for x in read("match_report.csv")}
+        self.assertEqual(rep["00000001"], "added")
         self.assertTrue(rep["00000003"].startswith("ARK found in 2 assets"))
-        self.assertTrue(rep["00000005"].startswith("resolve.csv already has IO_"))
-        self.assertEqual(rep["00000006"], "ARK not in resolve.csv")
-        self.assertEqual(rep["00000011"], "blade and URL name different ARKs in resolve.csv")
+        self.assertEqual(rep["00000005"], "resolve.csv already sends it to " + PORTAL + uid(8))
+        self.assertEqual(rep["00000006"], "ARK not in the master list")
+        self.assertEqual(rep["00000007"], "withdrawn (410) in resolve.csv: left as it is")
+        self.assertEqual(rep["00000011"], "blade and URL name different ARKs")
         self.assertNotIn("00000009", rep)
         self.assertNotIn("00000010", rep)
-        self.assertIn("4 ARK(s) updated", out)
+        self.assertIn("2 ARK(s) added to resolve.csv", out)
+        self.assertIn("1 minted ARK(s) not in resolve.csv yet", out)
+        self.assertEqual(ga.check_resolve(read("resolve.csv"), text=text("resolve.csv")), [])
+
+    def test_overwrite_replaces_an_address_but_never_410(self):
+        with fake_net(self.pv):
+            self.main(mp, "--overwrite")
+        r = {row["ark"]: row["p_path"] for row in read("resolve.csv")}
+        self.assertEqual(r[f"{ARK}taken"], PORTAL + uid(5))
+        self.assertEqual(r[f"{ARK}keep"], PORTAL + uid(8))
+        self.assertEqual(r[f"{ARK}withdrawn1"], "410")
 
     def test_dry_run_changes_nothing(self):
         before = text("resolve.csv")
@@ -343,9 +397,8 @@ class MatchTest(Base):
         os.remove("resolve.csv")
         with fake_net(self.pv, github):
             self.main(mp, "--from-github", "--push-to-github")
-        self.assertEqual(len(github.pushes), 1)
-        self.assertEqual(github.pushes[0][1], "resolve.csv")
-        self.assertIn("IO_" + uid(1), github.files["resolve.csv"])
+        self.assertEqual(github.pushes, [("PUT", "resolve.csv", "Add 2 ARK(s) matched in Preservica")])
+        self.assertIn(PORTAL + uid(1), github.files["resolve.csv"])
         with fake_net(self.pv, github):
             out = self.main(mp, "--from-github", "--push-to-github", "--push-report")
         self.assertIn("nothing to push", out)
@@ -354,15 +407,32 @@ class MatchTest(Base):
             self.main(mp, "--from-github", "--push-to-github", "--push-report")
         self.assertEqual(len(github.pushes), 2)
 
+    def test_github_copy_in_the_old_layout_is_converted_and_pushed(self):
+        github = FakeGitHub({"resolve.csv": ",".join(LEGACY_HEADER) + "\r\n"
+                                            f",,32498/taken,IO_{uid(5)},{PORTAL}{uid(5)},active,\r\n",
+                             "ark_master_list.csv": text("ark_master_list.csv")})
+        with fake_net(FakePreservica({}), github):
+            self.main(mp, "--from-github", "--push-to-github")
+        self.assertEqual(github.pushes[0][2], "Write resolve.csv as ark, p_path")
+        self.assertEqual(github.files["resolve.csv"], f"ark,p_path\r\n{ARK}taken,{PORTAL}{uid(5)}\r\n")
+
+    def test_a_resolve_csv_with_problems_is_not_pushed(self):
+        github = FakeGitHub({"resolve.csv": f"ark,p_path\r\n{ARK}taken,https://example.com/\r\n",
+                             "ark_master_list.csv": text("ark_master_list.csv")})
+        with fake_net(self.pv, github), self.assertRaises(SystemExit) as e:
+            self.main(mp, "--from-github", "--push-to-github")
+        self.assertIn("wasn't pushed", str(e.exception))
+        self.assertEqual(github.pushes, [])
+
     def test_generate_arks_match_preservica_in_one_step(self):
         github = FakeGitHub({"resolve.csv": text("resolve.csv"),
                              "ark_master_list.csv": text("ark_master_list.csv")})
         write("arks.csv", ["identifier", "title"], [["n1", "One"]])
         with fake_net(self.pv, github):
             out = self.main(ga, "out", "--push-to-github", "--match-preservica")
-        self.assertIn("4 ARK(s) updated", out)
-        self.assertIn("4 Preservica reference(s) added", [p[2] for p in github.pushes if p[1] == "resolve.csv"][0])
-        self.assertIn("IO_" + uid(2), github.files["resolve.csv"])
+        self.assertIn("2 ARK(s) added to resolve.csv", out)
+        self.assertIn("2 matched in Preservica", [p[2] for p in github.pushes if p[1] == "resolve.csv"][0])
+        self.assertIn(PORTAL + uid(2), github.files["resolve.csv"])
 
 
 class FakeGitHubServer:
@@ -498,7 +568,7 @@ class GitLabOptionsTest(Base):
 class HelpTest(unittest.TestCase):
     def test_help_renders(self):
         # Python 3.14 checks every help string when the script starts; older versions only on -h.
-        for module in (ga, mp):
+        for module in (ga, cr, mp):
             out = io.StringIO()
             with mock.patch.object(sys, "argv", ["x", "-h"]), contextlib.redirect_stdout(out), \
                     self.assertRaises(SystemExit) as e:
@@ -518,6 +588,9 @@ class ArkNameTest(unittest.TestCase):
         self.assertEqual(mp.ark_name("ark:/99999/zz", "32498"), "")
         self.assertEqual(mp.ark_name("not an ark!"), "")
         self.assertEqual(mp.ark_name(""), "")
+        self.assertEqual(ga.ark_key("https://library.uni.edu/ark:/32498/S3-abc/"), "32498/s3abc")
+        self.assertEqual(ga.ark_key("ark:/99999/zz", "32498"), "")
+        self.assertEqual(ga.ark_address("ark:/32498/s3abc"), "https://library.uni.edu/ark:/32498/s3abc")
 
 
 if __name__ == "__main__":
