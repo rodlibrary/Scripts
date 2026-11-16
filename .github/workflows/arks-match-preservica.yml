@@ -1,20 +1,20 @@
-# By hand only. Fills in the Preservica reference of each ARK in the GitLab resolver's
-# resolve.csv, from the ARKs in Preservica's MODS (Archival Resource Key and
-# Location (URL)), and pushes resolve.csv back when it changed. Setup steps are
-# in arks/README.md.
+# Weekly (and by hand). Fills in the Preservica reference of each ARK in the
+# resolver's resolve.csv (github.com/rodlibrary/Resolver), from the ARKs in
+# Preservica's MODS (Archival Resource Key and Location (URL)), and pushes
+# resolve.csv back when it changed. Setup steps are in arks/README.md.
 #
 # This repository is public, so the log shows only counts. The per-asset match
-# report goes to the GitLab resolver repository, not to this run.
+# report is pushed to the resolver repository (also public) instead.
 name: ARKs - match Preservica references
 
-# The weekly run happens in GitLab instead (the resolver repository's pipeline
-# schedule): GitHub's servers can't reach git.uni.edu. This workflow is kept for
-# running by hand, in case GitLab becomes reachable from GitHub.
 on:
+  schedule:
+    # Mondays 13:23 UTC: 7:23 am Central in winter, 8:23 am in summer.
+    - cron: "23 13 * * 1"
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Report only: don't change resolve.csv in GitLab"
+        description: "Report only: don't change resolve.csv in the resolver repository"
         type: boolean
         default: false
       overwrite:
@@ -22,11 +22,13 @@ on:
         type: boolean
         default: false
 
+# This workflow's own token only reads this repository. Writing to
+# rodlibrary/Resolver uses the RESOLVER_TOKEN secret.
 permissions:
   contents: read
 
 concurrency:
-  group: arks-gitlab
+  group: arks-resolver
   cancel-in-progress: false
 
 jobs:
@@ -38,21 +40,21 @@ jobs:
       PRESERVICA_PASSWORD: ${{ secrets.PRESERVICA_PASSWORD }}
       PRESERVICA_TENANT: ${{ secrets.PRESERVICA_TENANT }}
       PRESERVICA_SERVER: ${{ secrets.PRESERVICA_SERVER }}
-      GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-      GITLAB_URL: ${{ vars.GITLAB_URL || 'https://git.uni.edu' }}
-      GITLAB_PROJECT: ${{ vars.GITLAB_PROJECT || 'rod-library/resolver' }}
-      GITLAB_BRANCH: ${{ vars.GITLAB_BRANCH || 'main' }}
+      GITHUB_TOKEN: ${{ secrets.RESOLVER_TOKEN }}
+      RESOLVER_REPO: ${{ vars.RESOLVER_REPO || 'rodlibrary/Resolver' }}
+      RESOLVER_BRANCH: ${{ vars.RESOLVER_BRANCH || 'main' }}
       PRESERVICA_PORTAL_URL: ${{ vars.PRESERVICA_PORTAL_URL }}
-      DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+      DRY_RUN: ${{ (inputs.dry_run || vars.DRY_RUN == 'true') && '--dry-run' || '' }}
       OVERWRITE: ${{ inputs.overwrite && '--overwrite' || '' }}
 
     steps:
       - name: Check secrets are set
         run: |
           missing=""
-          for name in PRESERVICA_USERNAME PRESERVICA_PASSWORD GITLAB_TOKEN; do
+          for name in PRESERVICA_USERNAME PRESERVICA_PASSWORD GITHUB_TOKEN; do
             [ -z "${!name}" ] && missing="$missing $name"
           done
+          missing="${missing/GITHUB_TOKEN/RESOLVER_TOKEN}"
           if [ -n "$missing" ]; then
             echo "::error::Add these repository secrets (Settings > Secrets and variables > Actions > Secrets):$missing"
             exit 1
@@ -67,14 +69,6 @@ jobs:
       - name: Self-test (offline)
         run: python -m unittest discover -s arks/tests
 
-      - name: Check GitLab can be reached
-        run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$GITLAB_URL/api/v4/version" || true)
-          if [ "$code" = "000" ]; then
-            echo "::error::GitHub can't reach $GITLAB_URL (it may only be reachable on campus). Run arks/match_preservica.py on a campus computer instead; see arks/README.md."
-            exit 1
-          fi
-
-      - name: Match ARKs in Preservica and update GitLab
+      - name: Match ARKs in Preservica and update the resolver
         working-directory: arks
-        run: python match_preservica.py --from-gitlab --push-to-gitlab --push-report $DRY_RUN $OVERWRITE
+        run: python match_preservica.py --from-github --push-to-github --push-report $DRY_RUN $OVERWRITE

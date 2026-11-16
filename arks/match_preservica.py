@@ -34,8 +34,12 @@ USAGE
 -----
     python3 match_preservica.py                       # update resolve.csv here
     python3 match_preservica.py --dry-run             # report only, change nothing
-    export GITLAB_TOKEN=glpat-...
-    python3 match_preservica.py --from-gitlab --push-to-gitlab   # GitLab's copy, then push it back
+    export GITHUB_TOKEN=github_pat_...
+    python3 match_preservica.py --from-github --push-to-github   # GitHub's copy, then push it back
+
+The copies of record of resolve.csv and the master list are in the GitHub
+repository rodlibrary/Resolver (--github-repo). The token needs Contents: Read
+and write on it.
 
 Writes match_report.csv (one row per asset with ARK fields, and the outcome).
 
@@ -68,9 +72,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import generate_arks as ga  # noqa: E402  (shares the GitLab helpers and file layout)
+import generate_arks as ga  # noqa: E402  (shares the GitHub helpers and file layout)
 
-if not hasattr(ga, "fetch_file_from_gitlab"):
+if not hasattr(ga, "fetch_file_from_github"):
     sys.exit(f"The generate_arks.py next to this script ({ga.__file__}) is an older version. "
              "Download the current one from https://github.com/rodlibrary/Scripts/tree/main/arks "
              "into the same folder (both scripts need to be up to date).")
@@ -416,7 +420,7 @@ def run(resolve_path: str, master_path: "str | None", naan: str = ga.DEFAULT_NAA
         report_path: str = DEFAULT_REPORT, workers: int = 4, api: "Preservica | None" = None) -> dict:
     """Match resolve.csv against Preservica and update it. Returns the summary."""
     if not os.path.exists(resolve_path):
-        sys.exit(f"{resolve_path} not found. Run generate_arks.py first, or use --from-gitlab.")
+        sys.exit(f"{resolve_path} not found. Run generate_arks.py first, or use --from-github.")
     fields, rows = read_csv(resolve_path)
     master = read_csv(master_path)[1] if master_path and os.path.exists(master_path) else []
     api = api or Preservica(load_login())
@@ -449,46 +453,48 @@ def main() -> None:
                     help="replace a preservica_ref or target_url that differs from what Preservica says")
     ap.add_argument("--dry-run", action="store_true", help="write the report only; don't change or push resolve.csv")
     ap.add_argument("--workers", type=int, default=4, help="assets read at once (default 4)")
-    ap.add_argument("--from-gitlab", action="store_true", help="start from GitLab's resolve.csv and master list")
-    ap.add_argument("--push-to-gitlab", action="store_true", help="push resolve.csv to GitLab if it changed")
-    ap.add_argument("--gitlab-url", default=os.environ.get("GITLAB_URL") or ga.DEFAULT_GITLAB_URL)
-    ap.add_argument("--gitlab-project", default=os.environ.get("GITLAB_PROJECT") or ga.DEFAULT_GITLAB_PROJECT)
-    ap.add_argument("--gitlab-branch", default=os.environ.get("GITLAB_BRANCH") or "main")
-    ap.add_argument("--gitlab-manifest-path", default=None, help="resolve.csv's path in GitLab (default: same filename)")
-    ap.add_argument("--gitlab-master-path", default=None, help="the master list's path in GitLab (default: same filename)")
+    ap.add_argument("--from-github", action="store_true", help="start from GitHub's resolve.csv and master list")
+    ap.add_argument("--push-to-github", action="store_true", help="push resolve.csv to GitHub if it changed")
+    ap.add_argument("--github-repo", default=os.environ.get("RESOLVER_REPO") or ga.DEFAULT_GITHUB_REPO,
+                    help=f"resolver repository as owner/name (default: {ga.DEFAULT_GITHUB_REPO})")
+    ap.add_argument("--github-branch", default=os.environ.get("RESOLVER_BRANCH") or ga.DEFAULT_GITHUB_BRANCH,
+                    help=f"its branch (default: {ga.DEFAULT_GITHUB_BRANCH})")
+    ap.add_argument("--github-manifest-path", default=None, help="resolve.csv's path in GitHub (default: same filename)")
+    ap.add_argument("--github-master-path", default=None, help="the master list's path in GitHub (default: same filename)")
     ap.add_argument("--push-report", action="store_true",
-                    help="with --push-to-gitlab, also push the report to GitLab when it changed "
-                         "(keeps it out of public places such as GitHub run logs)")
-    ap.add_argument("--gitlab-report-path", default=None, help="the report's path in GitLab (default: same filename)")
-    ap.add_argument("--gitlab-token-env", default="GITLAB_TOKEN")
+                    help="with --push-to-github, also push the report to the resolver repository when it changed")
+    ap.add_argument("--github-report-path", default=None, help="the report's path in GitHub (default: same filename)")
+    ap.add_argument("--github-token-env", default=ga.DEFAULT_GITHUB_TOKEN_ENV,
+                    help=f"environment variable holding the GitHub token (default: {ga.DEFAULT_GITHUB_TOKEN_ENV})")
+    ap.add_argument("--github-api-url", default=ga.DEFAULT_GITHUB_API_URL, help=argparse.SUPPRESS)
+    ga.reject_gitlab_options()
     args = ap.parse_args()
 
-    token = os.environ.get(args.gitlab_token_env, "").strip()
-    paths = {"resolve": args.gitlab_manifest_path or os.path.basename(args.resolve),
-             "master": args.gitlab_master_path or os.path.basename(args.master_list)}
-    if (args.from_gitlab or args.push_to_gitlab) and not token:
-        sys.exit(f"Set {args.gitlab_token_env} to a GitLab token with api scope for {args.gitlab_project}.")
-    if args.from_gitlab:
+    token = os.environ.get(args.github_token_env, "").strip()
+    repo, branch, api_url = args.github_repo, args.github_branch, args.github_api_url
+    paths = {"resolve": args.github_manifest_path or os.path.basename(args.resolve),
+             "master": args.github_master_path or os.path.basename(args.master_list)}
+    if (args.from_github or args.push_to_github) and not token:
+        sys.exit(f"Set {args.github_token_env} to a GitHub token with Contents: Read and write on {repo}.")
+    if args.from_github:
         for local_path, key in ((args.resolve, "resolve"), (args.master_list, "master")):
             try:
-                data = ga.fetch_file_from_gitlab(args.gitlab_url, args.gitlab_project, paths[key],
-                                                 args.gitlab_branch, token)
+                data = ga.fetch_file_from_github(api_url, repo, paths[key], branch, token)
             except RuntimeError as e:
-                sys.exit(f"Couldn't download {paths[key]} from GitLab: {e}")
+                sys.exit(f"Couldn't download {paths[key]} from GitHub: {e}")
             if data is None:
                 if key == "resolve":
-                    sys.exit(f"{paths[key]} isn't in {args.gitlab_project} yet. Run generate_arks.py --push-to-gitlab first.")
+                    sys.exit(f"{paths[key]} isn't in {repo} yet. Run generate_arks.py --push-to-github first.")
                 continue
             with open(local_path, "wb") as f:
                 f.write(data)
-            print(f"Downloaded {paths[key]} from {args.gitlab_project}.")
-    elif args.push_to_gitlab:
-        # Merge GitLab's newer rows in first, so the push never drops them.
+            print(f"Downloaded {paths[key]} from {repo}.")
+    elif args.push_to_github:
+        # Merge GitHub's newer rows in first, so the push never drops them.
         try:
-            remote = ga.fetch_file_from_gitlab(args.gitlab_url, args.gitlab_project, paths["resolve"],
-                                               args.gitlab_branch, token)
+            remote = ga.fetch_file_from_github(api_url, repo, paths["resolve"], branch, token)
         except RuntimeError as e:
-            sys.exit(f"Couldn't download {paths['resolve']} from GitLab: {e}")
+            sys.exit(f"Couldn't download {paths['resolve']} from GitHub: {e}")
         ga.merge_into_local(args.resolve, remote)
 
     summary = run(args.resolve, args.master_list, args.naan, args.portal_url, args.overwrite,
@@ -504,30 +510,28 @@ def main() -> None:
                     f"{summary['problems']} asset(s) with unreadable ARK fields. "
                     f"{summary['assets_with_ark_fields']} asset(s) have ARK fields.\n")
 
-    if args.push_to_gitlab and args.push_report:
-        report_path = args.gitlab_report_path or os.path.basename(args.report)
+    if args.push_to_github and args.push_report:
+        report_path = args.github_report_path or os.path.basename(args.report)
         try:
-            remote = ga.fetch_file_from_gitlab(args.gitlab_url, args.gitlab_project, report_path,
-                                               args.gitlab_branch, token)
+            remote = ga.fetch_file_from_github(api_url, repo, report_path, branch, token)
             with open(args.report, "rb") as f:
                 if f.read() != remote:
-                    ga.push_file_to_gitlab(args.report, args.gitlab_url, args.gitlab_project, report_path,
-                                           args.gitlab_branch, token, "Update the Preservica ARK match report")
-                    print(f"Pushed {args.report} to GitLab.")
+                    ga.push_file_to_github(args.report, api_url, repo, report_path, branch, token,
+                                           "Update the Preservica ARK match report")
+                    print(f"Pushed {args.report} to GitHub.")
         except RuntimeError as e:
-            print(f"Warning: the report couldn't be pushed to GitLab: {e}", file=sys.stderr)
+            print(f"Warning: the report couldn't be pushed to GitHub: {e}", file=sys.stderr)
 
-    if args.push_to_gitlab and not args.dry_run:
+    if args.push_to_github and not args.dry_run:
         if not summary["updated"]:
             print("resolve.csv unchanged; nothing to push.")
             return
         try:
-            url = ga.push_file_to_gitlab(args.resolve, args.gitlab_url, args.gitlab_project, paths["resolve"],
-                                         args.gitlab_branch, token,
+            url = ga.push_file_to_github(args.resolve, api_url, repo, paths["resolve"], branch, token,
                                          f"Add Preservica references for {summary['updated']} ARK(s)")
         except RuntimeError as e:
-            sys.exit(f"GitLab push failed: {e}")
-        print(f"Pushed {args.resolve} to GitLab: {url}")
+            sys.exit(f"GitHub push failed: {e}")
+        print(f"Pushed {args.resolve} to GitHub: {url}")
 
 
 if __name__ == "__main__":
