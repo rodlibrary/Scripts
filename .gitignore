@@ -13,7 +13,7 @@ key.json
 
 # ARK working files: the copies of record live in the resolver repository (github.com/rodlibrary/Resolver)
 arks/resolve.csv
-arks/redirects.csv
+arks/resolve_paths.csv
 arks/ark_master_list.csv
 arks/match_report.csv
 

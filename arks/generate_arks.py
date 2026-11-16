@@ -33,24 +33,23 @@ Column headers are case-insensitive and surrounding whitespace is ignored.
                             alphanumeric string (see --blade-length),
                             independent of this value.
     title         REQUIRED  Title / short description of the resource
-    url           optional  URL the ARK should resolve to
+    url           optional  Where the ARK should resolve to: a full https://
+                            address (its p_path in resolve.csv), or 410 for a
+                            withdrawn item. Leave blank for Preservica items:
+                            match_preservica.py adds them once the ARK is in
+                            the asset's MODS.
     type          optional  Resource type (e.g. Text, Image, Dataset)
     commitment    optional  Persistence commitment statement
     format        optional  File / media format (e.g. application/pdf)
     relation      optional  Related identifier or resource
     source        optional  Source / provenance citation
-    dc_path       optional  Digital Commons path for the resolve manifest:
-                            a landing-page key (etd/123, pias/vol94/iss4/3)
-                            or a collection key (etd, pias/vol94/iss4)
-    dc_article    optional  Digital Commons file key (etd/1124) -- the
-                            article number from viewcontent.cgi, which
-                            differs from the number in the landing URL
-    preservica_ref optional Preservica reference, passed through as-is
-    status        optional  Redirect status: active, withdrawn (served as
-                            HTTP 410) or unmatched (ignored, kept for
-                            tracking). If blank: "active" when url is
-                            filled, otherwise "unmatched". "active"
-                            requires url; any other value is an error.
+    preservica_ref optional Preservica reference (IO_<uuid>), if already
+                            known: with no url, the ARK resolves to the
+                            asset's page in Preservica's portal.
+
+    Old ScholarWorks addresses (dc_path, dc_article) aren't used here: they
+    go in redirects.csv in github.com/rodlibrary/Redirects. A status column
+    is no longer needed: 410 in url marks a withdrawn item.
 
 OUTPUT
 ------
@@ -60,37 +59,33 @@ OUTPUT
     <output>.anvl  ANVL-formatted metadata records (the format used by
                    ARK resolvers such as N2T/EZID) suitable for import.
 
-RESOLVE MANIFEST (resolve.csv)
---------------------------------
-    Every successfully-minted ARK is also appended to resolve.csv, the file
-    Apache uses to resolve ARKs (override with --resolve-manifest; disable
-    with --no-resolve-manifest). It has exactly these columns:
+RESOLVE LIST (resolve.csv)
+---------------------------
+    resolve.csv is the list Apache uses to resolve ARKs (override with
+    --resolve-manifest; disable with --no-resolve-manifest). Like
+    redirects.csv in github.com/rodlibrary/Redirects, it has two columns of
+    full addresses, one row per ARK:
 
-        dc_path, dc_article, ark, preservica_ref, target_url, status, notes
+        ark      https://library.uni.edu/ark:/32498/s3x7k9q2mb   (--ark-base)
+        p_path   https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C<uuid>
+                 or 410 for a withdrawn item
 
-    "ark" is the bare NAAN/NAME form (e.g. 32498/s3abc...), without the
-    "ark:/" prefix. "target_url" comes from the input "url" column. The
-    file is append-only; a warning is printed if a dc_path/dc_article
-    pair is already in it. With --push-to-github both this file and the
-    master list are pushed to the GitHub resolver repository.
+    Only ARKs with somewhere to go are listed. A newly minted ARK is added
+    when its row has a url (or a preservica_ref); otherwise it is recorded in
+    the master list only, and match_preservica.py adds it once the ARK is in
+    the asset's MODS in Preservica. Pass --match-preservica to run that
+    matching in the same command. Existing rows are never changed.
 
-    resolve.csv replaces the earlier redirects.csv (same columns). If
-    resolve.csv doesn't exist yet but redirects.csv does, its rows are
-    copied into resolve.csv the first time the script runs.
+    Every p_path must be a full https:// address on one of the allowed hosts
+    (--allowed-host; default uni.access.preservica.com and
+    digital.library.uni.edu), with characters such as | percent-encoded, as
+    in redirects.csv. A row with a bad url is rejected before an ARK is
+    minted for it. check_resolve.py checks a whole resolve.csv.
 
-    SLIM EXPORT (resolve_paths.csv): after each run, a second file with only
-    the columns "ark" and "p_path" is rebuilt from the full resolve manifest
-    (override the name with --slim-manifest; disable with
-    --no-slim-manifest). "p_path" is the manifest's target_url, i.e. where
-    the ARK redirects to. Only rows with status "active" and a non-blank
-    target_url are included, since a row with nowhere to redirect is of no
-    use to a resolver. The file is overwritten every run (it is derived, not
-    a record), and it is NOT pushed to GitHub by --push-to-github.
-
-    Preservica references are filled in later by match_preservica.py, which
-    reads each Preservica asset's MODS "Archival Resource Key" identifier
-    and "Location (URL)" and records the asset holding each ARK. Pass
-    --match-preservica to run that matching in the same command.
+    A resolve.csv in the older seven-column layout (dc_path, dc_article,
+    ark, preservica_ref, target_url, status, notes) is converted when it's
+    read: active rows keep their target_url, withdrawn rows become 410, and
+    unmatched rows are left out (their ARKs stay in the master list).
 
 MASTER LIST (RECORDKEEPING & CROSS-RUN UNIQUENESS)
 ----------------------------------------------------
@@ -114,14 +109,15 @@ PULLING FROM AND PUSHING TO GITHUB
     Pass --push-to-github to commit the updated master list and resolve.csv
     to the GitHub resolver repository after each run, via the GitHub
     repository contents API (creates each file on first push, updates it
-    after that -- no external HTTP library required).
+    after that -- no external HTTP library required). resolve.csv is only
+    pushed if it passes the same checks as check_resolve.py.
 
     Before minting, --push-to-github first pulls the GitHub copies of both
     files and merges them into the local ones: rows already in GitHub are
     kept as they are, and local rows GitHub doesn't have yet are added. So a
     run never mints a blade someone else minted elsewhere, and never pushes
-    an out-of-date copy over newer rows (such as Preservica references added
-    by match_preservica.py). Use --no-pull to skip this.
+    an out-of-date copy over newer rows (such as ARKs added by
+    match_preservica.py). Use --no-pull to skip this.
 
     --github-repo names the repository as owner/name (default:
     rodlibrary/Resolver, i.e. https://github.com/rodlibrary/Resolver).
@@ -158,6 +154,7 @@ import argparse
 import base64
 import csv
 import datetime
+import io
 import json
 import os
 import re
@@ -185,40 +182,43 @@ MASTER_LIST_FIELDS = (
     "identifier", "title", "source_file", "row",
 )
 
-# Resolve manifest (resolve.csv): the append-only file Apache uses to resolve
-# ARKs. Column order must match the manifest header exactly. It replaces the
-# earlier redirects.csv, which had the same columns.
+# Resolve list (resolve.csv): the file Apache uses to resolve ARKs. Two
+# columns of full addresses, like redirects.csv in rodlibrary/Redirects.
 DEFAULT_RESOLVE_MANIFEST = "resolve.csv"
-LEGACY_REDIRECTS_MANIFEST = "redirects.csv"
-RESOLVE_FIELDS = (
+RESOLVE_FIELDS = ("ark", "p_path")
+# The layout resolve.csv had until November 2026; converted when read.
+LEGACY_RESOLVE_FIELDS = (
     "dc_path", "dc_article", "ark", "preservica_ref", "target_url",
     "status", "notes",
 )
-REDIRECT_FIELDS = RESOLVE_FIELDS  # older name, kept for scripts that import it
-
-# Slim export: just the ARK and where it redirects to (the manifest's
-# target_url). Rebuilt from the resolve manifest on every run.
-DEFAULT_SLIM_MANIFEST = "resolve_paths.csv"
-SLIM_FIELDS = ("ark", "p_path")
+# Where ARKs resolve: N2T sends ark:/32498/... to https://library.uni.edu/ark:/32498/...
+DEFAULT_ARK_BASE = "https://library.uni.edu"
+# Hosts a p_path may point to (the same as in rodlibrary/Redirects' settings.env).
+DEFAULT_ALLOWED_TARGET_HOSTS = ("uni.access.preservica.com", "digital.library.uni.edu")
+# p_path for a withdrawn item: Apache answers 410 Gone.
+GONE = "410"
+# A Preservica asset's page in the public portal; {ref} is its UUID.
+DEFAULT_PORTAL_URL = "https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C{ref}"
 
 # GitHub repository that receives resolve.csv and the master list.
 DEFAULT_GITHUB_API_URL = "https://api.github.com"
 DEFAULT_GITHUB_REPO = "rodlibrary/Resolver"
 DEFAULT_GITHUB_BRANCH = "main"
 DEFAULT_GITHUB_TOKEN_ENV = "GITHUB_TOKEN"
-# active     -> resolve (redirect) to target_url
-# withdrawn  -> served as HTTP 410 (target_url may be blank)
-# unmatched  -> ignored by the resolver, kept for tracking
-REDIRECT_STATUSES = ("active", "withdrawn", "unmatched")
-
 REQUIRED_FIELDS = ("identifier", "title")
 OPTIONAL_FIELDS = (
     "shoulder", "url", "type", "commitment", "format", "relation", "source",
 )
 ALL_FIELDS = (
     ("naan",) + OPTIONAL_FIELDS[:1] + ("identifier", "title") + OPTIONAL_FIELDS[1:]
-    + ("dc_path", "dc_article", "preservica_ref")
+    + ("preservica_ref",)
 )
+# Input columns that belonged to the older resolve.csv layout; ignored, with a note.
+IGNORED_INPUT_FIELDS = ("dc_path", "dc_article", "status")
+_UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+# Characters allowed unencoded in a p_path (as in rodlibrary/Redirects' build_map.py).
+_URL_CHARS_RE = re.compile(r"^(?:[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=]|%[0-9A-Fa-f]{2})+$")
+_ARK_IN_TEXT_RE = re.compile(r"ark:/?(\d{5,})/([^\s?#]+)")
 
 # Base-32 alphabet used by the NOID/ARK check-character algorithm.
 _XDIGIT_ALPHABET = "0123456789bcdfghjkmnpqrstvwxyz"
@@ -341,6 +341,7 @@ def append_master_list(
         return 0
     file_exists = os.path.exists(master_list_path)
     timestamp = datetime.datetime.now().isoformat(timespec="seconds")
+    end_with_line_break(master_list_path)    # else the first new row joins the last old one
     with open(master_list_path, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=MASTER_LIST_FIELDS)
         if not file_exists:
@@ -360,6 +361,16 @@ def append_master_list(
     return len(new_rows)
 
 
+def end_with_line_break(path: str) -> None:
+    """Add a line break to the end of a file that lacks one (before appending to it)."""
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return
+    with open(path, "rb+") as f:
+        f.seek(-1, os.SEEK_END)
+        if f.read(1) not in (b"\n", b"\r"):
+            f.write(b"\r\n")
+
+
 def process_row(
     row_num: int,
     row: dict,
@@ -368,15 +379,15 @@ def process_row(
     default_naan: str,
     used_blades: set,
     blade_length: int = 10,
+    allowed_hosts: "tuple[str, ...] | list[str]" = DEFAULT_ALLOWED_TARGET_HOSTS,
+    portal_url: str = DEFAULT_PORTAL_URL,
 ) -> dict:
     notes = []
-    routine_notes = []  # informational only; kept out of the resolve manifest
     row = {k: (v or "").strip() for k, v in row.items()}
 
     if not row.get("naan"):
         row["naan"] = default_naan
         notes.append(f"naan not supplied; defaulted to {default_naan}")
-        routine_notes.append(notes[-1])
 
     missing = [f for f in REQUIRED_FIELDS if not row.get(f)]
     if missing:
@@ -389,21 +400,32 @@ def process_row(
             **{f: row.get(f, "") for f in ALL_FIELDS},
         }
 
-    # Resolve-manifest status. Optional in the input; when omitted it is
-    # inferred: a row with a target URL is "active", otherwise "unmatched".
-    redirect_status = row.get("status", "").lower()
-    if not redirect_status:
-        redirect_status = "active" if row.get("url") else "unmatched"
-        notes.append(f"status not supplied; set to {redirect_status}")
-        routine_notes.append(notes[-1])
+    # Where the ARK resolves (its p_path in resolve.csv): the url column, or
+    # 410 for a withdrawn item, or the portal page of a known Preservica
+    # reference. Blank: recorded in the master list only, until
+    # match_preservica.py finds it in Preservica.
+    for col in IGNORED_INPUT_FIELDS:
+        if row.get(col) and not (col == "status" and row[col].lower() == "withdrawn"):
+            notes.append(
+                f"{col} ignored (old ScholarWorks addresses go in rodlibrary/Redirects' "
+                "redirects.csv; 410 in url marks a withdrawn item)" if col != "status"
+                else "status ignored (410 in url marks a withdrawn item)"
+            )
     problem = None
-    if redirect_status not in REDIRECT_STATUSES:
-        problem = (
-            f"invalid status '{redirect_status}' "
-            f"(expected one of: {', '.join(REDIRECT_STATUSES)})"
-        )
-    elif redirect_status == "active" and not row.get("url"):
-        problem = "status 'active' requires a url (target_url)"
+    p_path = ""
+    if (row.get("status") or "").lower() == "withdrawn" and not row.get("url"):
+        p_path = GONE                     # older inputs: status withdrawn
+    if row.get("url"):
+        try:
+            p_path = check_p_path(row["url"], allowed_hosts)
+        except ValueError as e:
+            problem = f"url: {e}"
+    elif row.get("preservica_ref") and not p_path:
+        ref = _UUID_RE.search(row["preservica_ref"])
+        if ref and portal_url:
+            p_path = portal_url.format(ref=ref.group(0).lower())
+        elif not ref:
+            problem = f"preservica_ref '{row['preservica_ref']}' holds no Preservica reference (IO_<uuid>)"
     if problem:
         # Rejected before minting so no ARK is consumed for a bad row.
         return {
@@ -447,7 +469,6 @@ def process_row(
         "row": row_num,
         "status": "OK" if not notes else "OK (with notes)",
         "notes": "; ".join(notes),
-        "manifest_notes": "; ".join(n for n in notes if n not in routine_notes),
         "ark": ark,
         "resolvable_url": resolvable_url,
         "naan": row["naan"],
@@ -461,102 +482,223 @@ def process_row(
         "format": row.get("format", ""),
         "relation": row.get("relation", ""),
         "source": row.get("source", ""),
-        "dc_path": row.get("dc_path", ""),
-        "dc_article": row.get("dc_article", ""),
         "preservica_ref": row.get("preservica_ref", ""),
-        "redirect_status": redirect_status,
+        "p_path": p_path,
     }
 
 
-def append_resolve_manifest(manifest_path: str, results: list[dict]) -> int:
+# --------------------------------------------------------------------------- resolve.csv
+
+def ark_key(value: str, naan: str = "") -> str:
     """
-    Append one row per successfully-minted ARK to the resolve manifest
-    (creating it, with a header, if needed). Append-only: existing rows
-    are never rewritten. The `ark` column holds the bare "NAAN/NAME" form
-    (no "ark:/" prefix). Warns on stderr if a dc_path/dc_article pair is
-    already present, since one item should normally have one ARK.
+    The comparable form of an ARK, "NAAN/name" in lower case without hyphens
+    (they carry no meaning in ARKs), from ark:/32498/x7k9q, ark:32498/x7k9q,
+    https://library.uni.edu/ark:/32498/x7k9q, https://n2t.net/ark:/32498/x7k9q
+    or 32498/x7k9q. '' if there's no ARK, or it's under a different NAAN.
     """
-    new_rows = [r for r in results if r["status"] != "ERROR"]
-    if not new_rows:
-        return 0
-
-    seen = set()
-    file_exists = os.path.exists(manifest_path)
-    if file_exists:
-        with open(manifest_path, newline="", encoding="utf-8-sig") as f:
-            for existing in csv.DictReader(f):
-                seen.add((existing.get("dc_path", ""), existing.get("dc_article", "")))
-
-    with open(manifest_path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=RESOLVE_FIELDS)
-        if not file_exists:
-            writer.writeheader()
-        for r in new_rows:
-            key = (r.get("dc_path", ""), r.get("dc_article", ""))
-            if key != ("", "") and key in seen:
-                print(
-                    f"Warning: dc_path='{key[0]}' dc_article='{key[1]}' "
-                    f"(row {r['row']}) is already in {manifest_path}; "
-                    f"a second ARK was added.",
-                    file=sys.stderr,
-                )
-            seen.add(key)
-            writer.writerow({
-                "dc_path": r.get("dc_path", ""),
-                "dc_article": r.get("dc_article", ""),
-                "ark": r["ark"].split("ark:/", 1)[1],
-                "preservica_ref": r.get("preservica_ref", ""),
-                "target_url": r.get("url", ""),
-                "status": r["redirect_status"],
-                "notes": r.get("manifest_notes", ""),
-            })
-    return len(new_rows)
+    t = (value or "").strip()
+    m = _ARK_IN_TEXT_RE.search(t) or re.fullmatch(r"(\d{5,})/([^\s?#/][^\s?#]*)", t)
+    if not m or (naan and m.group(1) != naan):
+        return ""
+    name = m.group(2).rstrip("./").replace("-", "").lower()
+    return f"{m.group(1)}/{name}" if name else ""
 
 
-append_redirects_manifest = append_resolve_manifest  # older name
+def ark_address(ark: str, base: str = DEFAULT_ARK_BASE) -> str:
+    """resolve.csv's ark column for an ARK: https://library.uni.edu/ark:/32498/name."""
+    m = _ARK_IN_TEXT_RE.search(ark or "") or re.fullmatch(r"(\d{5,})/(\S+)", (ark or "").strip())
+    if not m:
+        raise ValueError(f"'{ark}' isn't an ARK")
+    return f"{base.rstrip('/')}/ark:/{m.group(1)}/{m.group(2).rstrip('/')}"
 
 
-def write_slim_manifest(resolve_path: str, slim_path: str) -> int:
+def check_p_path(value: str, allowed_hosts=DEFAULT_ALLOWED_TARGET_HOSTS) -> str:
     """
-    Rebuild the slim export from the full resolve manifest: one row per
-    ARK with only `ark` and `p_path` (= the manifest's target_url). Rows
-    that are not status "active" or that have no target_url are left out.
-    The file is overwritten each time. Returns the number of rows written.
+    A p_path as resolve.csv stores it, or ValueError saying what's wrong. The
+    rules are those of redirects.csv in rodlibrary/Redirects: a full https://
+    address on an allowed host with characters such as | percent-encoded, or
+    410 (or "gone") for a withdrawn item.
     """
-    rows = []
-    seen = set()
-    with open(resolve_path, newline="", encoding="utf-8-sig") as f:
-        for row in csv.DictReader(f):
-            ark = (row.get("ark") or "").strip()
-            target = (row.get("target_url") or "").strip()
-            status = (row.get("status") or "").strip().lower()
-            if not ark or not target or status != "active" or ark in seen:
-                continue
-            seen.add(ark)
-            rows.append({"ark": ark, "p_path": target})
-    with open(slim_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=SLIM_FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
-    return len(rows)
+    v = (value or "").strip()
+    if v.lower() in ("410", "gone"):
+        return GONE
+    if not v:
+        raise ValueError("p_path is empty (use 410 for a withdrawn item)")
+    if any(c.isspace() for c in v):
+        raise ValueError("p_path contains a space")
+    if not _URL_CHARS_RE.match(v):
+        raise ValueError("p_path has characters that must be percent-encoded (e.g. | as %7C)")
+    u = urllib.parse.urlparse(v)
+    if u.scheme != "https" or not u.netloc:
+        raise ValueError("p_path must be a full address starting with https://")
+    hosts = [h.lower() for h in allowed_hosts or ()]
+    if hosts and (u.hostname or "").lower() not in hosts:
+        raise ValueError(f"p_path host '{u.hostname}' isn't one of {', '.join(hosts)}")
+    return v
 
 
-def migrate_legacy_manifest(manifest_path: str) -> bool:
+def _convert_legacy_rows(rows: list[dict], base: str) -> tuple[list[dict], list[str]]:
+    """Rows of the older seven-column resolve.csv as ark/p_path rows."""
+    out, dropped = [], []
+    for r in rows:
+        ark = (r.get("ark") or "").strip()
+        if not ark:
+            continue
+        status = (r.get("status") or "").strip().lower()
+        target = (r.get("target_url") or "").strip()
+        if status == "withdrawn":
+            p_path = GONE
+        elif status in ("active", "") and target:
+            p_path = target
+        else:
+            dropped.append(ark)       # unmatched: stays in the master list only
+            continue
+        try:
+            out.append({"ark": ark_address(ark, base), "p_path": p_path})
+        except ValueError:
+            dropped.append(ark)
+    return out, dropped
+
+
+def parse_resolve(text: str, base: str = DEFAULT_ARK_BASE, source: str = "resolve.csv") -> list[dict]:
     """
-    One-time move from redirects.csv to resolve.csv: if `manifest_path`
-    doesn't exist yet but a redirects.csv sits next to it, copy its rows
-    (same columns) into `manifest_path`. Returns True if it copied.
+    resolve.csv's rows as {"ark", "p_path"} dicts, from its text. A file in
+    the older seven-column layout is converted (see the module docstring).
     """
-    if os.path.exists(manifest_path):
-        return False
-    legacy = os.path.join(os.path.dirname(manifest_path) or ".", LEGACY_REDIRECTS_MANIFEST)
-    if os.path.abspath(legacy) == os.path.abspath(manifest_path) or not os.path.exists(legacy):
-        return False
-    with open(legacy, newline="", encoding="utf-8-sig") as src, \
-            open(manifest_path, "w", newline="", encoding="utf-8") as dst:
-        dst.write(src.read())
-    print(f"Copied the rows of {legacy} into {manifest_path} (resolve.csv replaces redirects.csv).")
-    return True
+    reader = csv.DictReader(text.splitlines())
+    fields = [normalize_header(h) for h in (reader.fieldnames or [])]
+    reader.fieldnames = fields
+    rows = list(reader)
+    if not fields:
+        return []
+    if "target_url" in fields:
+        converted, dropped = _convert_legacy_rows(rows, base)
+        print(
+            f"{source} is in the older seven-column layout; converted it to ark, p_path "
+            f"({len(converted)} row(s); {len(dropped)} unmatched ARK(s) left to the master list)."
+        )
+        return converted
+    if not {"ark", "p_path"} <= set(fields):
+        raise ValueError(f"{source} needs the columns ark and p_path; found {', '.join(fields)}")
+    return [{"ark": (r.get("ark") or "").strip(), "p_path": (r.get("p_path") or "").strip()}
+            for r in rows if any((v or "").strip() for v in r.values() if isinstance(v, str))]
+
+
+def read_resolve(path: str, base: str = DEFAULT_ARK_BASE) -> list[dict]:
+    """The rows of a local resolve.csv ([] if it doesn't exist)."""
+    if not os.path.exists(path):
+        return []
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        return parse_resolve(f.read(), base, path)
+
+
+def resolve_text(rows: list[dict]) -> str:
+    """resolve.csv's text: header ark,p_path, one row per line, ending with a line break."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=RESOLVE_FIELDS, extrasaction="ignore", lineterminator="\r\n")
+    writer.writeheader()
+    for r in rows:
+        writer.writerow({k: (r.get(k) or "") for k in RESOLVE_FIELDS})
+    return buf.getvalue()
+
+
+def write_resolve(path: str, rows: list[dict]) -> None:
+    tmp = path + ".partial"
+    with open(tmp, "w", newline="", encoding="utf-8") as f:
+        f.write(resolve_text(rows))
+    os.replace(tmp, path)
+
+
+def check_resolve(
+    rows: list[dict],
+    naan: str = DEFAULT_NAAN,
+    base: str = DEFAULT_ARK_BASE,
+    allowed_hosts=DEFAULT_ALLOWED_TARGET_HOSTS,
+    text: "str | None" = None,
+) -> list[str]:
+    """
+    Problems with resolve.csv's rows, each naming its line, by the rules
+    redirects.csv follows in rodlibrary/Redirects: every ark a full address
+    under `base` and our NAAN, listed once; every p_path a full https://
+    address on an allowed host, or 410. With `text`, also that the file ends
+    with a line break.
+    """
+    errors, seen = [], {}
+    prefix = f"{base.rstrip('/')}/ark:/"
+    for line, r in enumerate(rows, start=2):
+        ark = r.get("ark", "")
+        key = ark_key(ark, naan)
+        if not ark.startswith(prefix):
+            errors.append(f"line {line}: ark '{ark}' should be a full address like {prefix}{naan}/x7k9q2mbd")
+        elif not key:
+            errors.append(f"line {line}: ark '{ark}' isn't under our NAAN {naan}")
+        if key and key in seen:
+            errors.append(f"line {line}: {ark} is already on line {seen[key]}")
+        elif key:
+            seen[key] = line
+        try:
+            check_p_path(r.get("p_path", ""), allowed_hosts)
+        except ValueError as e:
+            errors.append(f"line {line}: {e}")
+    if text is not None and text and not text.endswith(("\n", "\r")):
+        errors.append("the file doesn't end with a line break")
+    return errors
+
+
+def add_to_resolve(path: str, results: list[dict], base: str = DEFAULT_ARK_BASE) -> int:
+    """
+    Add a row to resolve.csv for every minted ARK that has a p_path. Existing
+    rows are kept as they are. Returns the number of rows added.
+    """
+    rows = read_resolve(path, base)
+    keys = {ark_key(r["ark"]) for r in rows}
+    added = 0
+    for r in results:
+        if r["status"] == "ERROR" or not r.get("p_path"):
+            continue
+        address = ark_address(r["ark"], base)
+        if ark_key(address) in keys:
+            continue
+        rows.append({"ark": address, "p_path": r["p_path"]})
+        keys.add(ark_key(address))
+        added += 1
+    if added or read_resolve_raw(path) is None:   # new rows, or a file to create or convert
+        write_resolve(path, rows)
+    return added
+
+
+def read_resolve_raw(path: str) -> "list[dict] | None":
+    """
+    resolve.csv's rows exactly as stored, or None if the file needs writing
+    afresh: it doesn't exist, isn't ark,p_path yet, or doesn't end with a line break.
+    """
+    if not os.path.exists(path):
+        return None
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        text = f.read()
+    if text and not text.endswith(("\n", "\r")):
+        return None
+    reader = csv.DictReader(text.splitlines())
+    if [normalize_header(h) for h in (reader.fieldnames or [])] != list(RESOLVE_FIELDS):
+        return None
+    return [{"ark": (r.get("ark") or "").strip(), "p_path": (r.get("p_path") or "").strip()} for r in reader]
+
+
+def merge_resolve(local_path: str, remote: "bytes | None", base: str = DEFAULT_ARK_BASE) -> tuple[int, int]:
+    """
+    Merge GitHub's resolve.csv into the local one: every GitHub row is kept as
+    it is, and local rows for ARKs GitHub doesn't have are added after them.
+    Returns (rows from GitHub, local rows added). With no GitHub copy the local
+    file is left alone.
+    """
+    if remote is None:
+        return 0, 0
+    remote_rows = parse_resolve(remote.decode("utf-8-sig"), base, "GitHub's resolve.csv")
+    local_rows = read_resolve(local_path, base)
+    seen = {ark_key(r["ark"]) for r in remote_rows}
+    extra = [r for r in local_rows if ark_key(r["ark"]) and ark_key(r["ark"]) not in seen]
+    write_resolve(local_path, remote_rows + extra)
+    return len(remote_rows), len(extra)
 
 
 # Options the scripts had while the resolver lived in GitLab. They now stop
@@ -779,8 +921,7 @@ def write_csv(results: list[dict], output_csv: str) -> None:
     fieldnames = [
         "row", "status", "ark", "resolvable_url", "naan", "shoulder",
         "ark_blade", "identifier", "title", "url", "type", "commitment",
-        "format", "relation", "source", "dc_path", "dc_article",
-        "preservica_ref", "redirect_status", "notes",
+        "format", "relation", "source", "preservica_ref", "p_path", "notes",
     ]
     with open(output_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -799,7 +940,8 @@ def write_anvl(results: list[dict], output_anvl: str) -> None:
         lines.append(f"erc.who: {r.get('source') or 'unknown'}")
         lines.append(f"erc.what: {r['title']}")
         lines.append(f"erc.when: {today}")
-        lines.append(f"erc.where: {r.get('url') or r['resolvable_url']}")
+        where = r.get("p_path") if r.get("p_path") not in ("", GONE) else r["resolvable_url"]
+        lines.append(f"erc.where: {where}")
         if r.get("type"):
             lines.append(f"dc.type: {r['type']}")
         if r.get("format"):
@@ -812,6 +954,46 @@ def write_anvl(results: list[dict], output_anvl: str) -> None:
         lines.append("")  # blank line between records
     with open(output_anvl, "w", encoding="utf-8") as f:
         f.write("\n".join(lines).rstrip() + "\n")
+
+
+# Options for files that are no longer written. They're accepted and ignored,
+# with a note, so an older command still mints.
+REMOVED_OPTIONS = {
+    "--slim-manifest": ("resolve.csv now has just ark and p_path, so resolve_paths.csv "
+                        "is no longer written", True),
+    "--no-slim-manifest": ("resolve_paths.csv is no longer written", False),
+    "--redirects-manifest": ("use --resolve-manifest", True),
+    "--no-redirects-manifest": ("use --no-resolve-manifest", False),
+}
+
+
+def drop_removed_options(argv: "list[str] | None" = None) -> list[str]:
+    """The command line without the options in REMOVED_OPTIONS (noting each one)."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    out, i = [], 0
+    while i < len(args):
+        name = args[i].split("=", 1)[0]
+        if name in REMOVED_OPTIONS:
+            why, takes_value = REMOVED_OPTIONS[name]
+            if name in ("--redirects-manifest", "--no-redirects-manifest"):
+                out.append(args[i].replace(name, name.replace("redirects", "resolve"), 1))
+                if takes_value and "=" not in args[i] and i + 1 < len(args):
+                    out.append(args[i + 1])
+            print(f"Note: {name} {'is the old name: ' if 'redirects' in name else 'ignored: '}{why}.")
+            i += 2 if takes_value and "=" not in args[i] else 1
+            continue
+        out.append(args[i])
+        i += 1
+    return out
+
+
+def allowed_hosts(given: "list[str] | None" = None) -> tuple[str, ...]:
+    """Hosts a p_path may point to: --allowed-host, else ALLOWED_TARGET_HOSTS, else the defaults."""
+    if given:
+        return tuple(h.strip().lower() for h in given if h.strip())
+    env = os.environ.get("ALLOWED_TARGET_HOSTS", "")
+    hosts = tuple(h.strip().lower() for h in env.split(",") if h.strip())
+    return hosts or DEFAULT_ALLOWED_TARGET_HOSTS
 
 
 def main() -> None:
@@ -879,37 +1061,33 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--resolve-manifest", "--redirects-manifest",
+        "--resolve-manifest",
         dest="resolve_manifest",
         default=DEFAULT_RESOLVE_MANIFEST,
         help=(
-            "Path to the append-only resolve manifest Apache uses (columns: "
+            "Path to resolve.csv, the list Apache uses (columns: "
             + ", ".join(RESOLVE_FIELDS)
-            + f"). New ARKs are appended after each run. (default: "
-            f"{DEFAULT_RESOLVE_MANIFEST}; --redirects-manifest is the older name)"
+            + f"). Minted ARKs with a url are added. (default: {DEFAULT_RESOLVE_MANIFEST})"
         ),
     )
     parser.add_argument(
-        "--no-resolve-manifest", "--no-redirects-manifest",
+        "--no-resolve-manifest",
         dest="no_resolve_manifest",
         action="store_true",
-        help="Do not write or push the resolve manifest.",
+        help="Do not write or push resolve.csv.",
     )
     parser.add_argument(
-        "--slim-manifest",
-        default=DEFAULT_SLIM_MANIFEST,
+        "--ark-base",
+        default=os.environ.get("ARK_BASE_URL") or DEFAULT_ARK_BASE,
+        help=f"Address ARKs resolve at, for resolve.csv's ark column (default: {DEFAULT_ARK_BASE}).",
+    )
+    parser.add_argument(
+        "--allowed-host",
+        action="append",
         help=(
-            "Path for the slim export with only the columns "
-            + ", ".join(SLIM_FIELDS)
-            + " (p_path is the manifest's target_url; only active rows with "
-            "a target are included). Rebuilt from the resolve manifest on "
-            f"every run and not pushed to GitHub. (default: {DEFAULT_SLIM_MANIFEST})"
+            "Host a url (p_path) may point to; repeat for several (default: "
+            + ", ".join(DEFAULT_ALLOWED_TARGET_HOSTS) + ", or ALLOWED_TARGET_HOSTS)."
         ),
-    )
-    parser.add_argument(
-        "--no-slim-manifest",
-        action="store_true",
-        help="Do not write the slim ark/p_path export.",
     )
     parser.add_argument(
         "--push-to-github",
@@ -975,24 +1153,22 @@ def main() -> None:
         "--match-preservica",
         action="store_true",
         help=(
-            "After minting, run match_preservica.py on the resolve manifest: "
-            "read each Preservica asset's MODS Archival Resource Key and "
-            "Location (URL) and fill in the preservica_ref (and a target_url "
-            "where none is set) of the ARKs found. Needs the Preservica login "
-            "(PRESERVICA_* environment variables or credentials.properties)."
+            "After minting, run match_preservica.py: read each Preservica "
+            "asset's MODS Archival Resource Key and Location (URL) and add "
+            "the ARKs found to resolve.csv, pointing at the asset's portal "
+            "page. Needs the Preservica login (PRESERVICA_* environment "
+            "variables or credentials.properties)."
         ),
     )
     reject_gitlab_options()
-    args = parser.parse_args()
+    args = parser.parse_args(drop_removed_options())
+    args.allowed_hosts = allowed_hosts(args.allowed_host)
 
     github_paths = {
         "master": args.github_path or os.path.basename(args.master_list),
         "resolve": args.github_manifest_path or os.path.basename(args.resolve_manifest),
     }
     token = (os.environ.get(args.github_token_env) or "").strip()
-
-    if not args.no_resolve_manifest:
-        migrate_legacy_manifest(args.resolve_manifest)
 
     # Bring in what GitHub already has before minting, so blades stay unique
     # across computers and the push never overwrites newer rows.
@@ -1020,7 +1196,10 @@ def main() -> None:
                     "Check the token and --github-repo, or use --no-pull to run "
                     "with the local files only."
                 )
-            from_github, local_only = merge_into_local(local_path, remote)
+            if local_path == args.resolve_manifest:
+                from_github, local_only = merge_resolve(local_path, remote, args.ark_base)
+            else:
+                from_github, local_only = merge_into_local(local_path, remote)
             if remote is None:
                 print(f"{dest_path} isn't in {args.github_repo} yet; it will be created by the push.")
             else:
@@ -1028,6 +1207,22 @@ def main() -> None:
                     f"Pulled {dest_path} from GitHub ({from_github} row(s)); "
                     f"{local_only} local row(s) not yet in GitHub kept."
                 )
+
+    # resolve.csv must pass the checks before anything is minted into it, or
+    # the push at the end would be refused with new ARKs already issued.
+    if args.push_to_github and not args.no_resolve_manifest and os.path.exists(args.resolve_manifest):
+        try:
+            problems = check_resolve(read_resolve(args.resolve_manifest, args.ark_base),
+                                     args.naan, args.ark_base, args.allowed_hosts)
+        except ValueError as e:
+            problems = [str(e)]
+        if problems:
+            sys.exit(
+                f"{args.resolve_manifest} has {len(problems)} problem(s), so nothing was minted:\n"
+                + "".join(f"  {e}\n" for e in problems[:20])
+                + "Fix them in the resolver repository (check_resolve.py --from-github lists them), "
+                "then run again."
+            )
 
     rows = read_rows(args.input_csv)
     if args.no_master_list:
@@ -1038,7 +1233,7 @@ def main() -> None:
     results = [
         process_row(
             i, row, args.resolver, args.add_checksum, args.naan,
-            used_blades, args.blade_length,
+            used_blades, args.blade_length, args.allowed_hosts,
         )
         for i, row in enumerate(rows, start=2)  # row 1 is the header
     ]
@@ -1055,10 +1250,11 @@ def main() -> None:
 
     manifest_appended = 0
     if not args.no_resolve_manifest:
-        manifest_appended = append_resolve_manifest(args.resolve_manifest, results)
+        manifest_appended = add_to_resolve(args.resolve_manifest, results, args.ark_base)
+        waiting = sum(1 for r in results if r["status"] != "ERROR" and not r.get("p_path"))
         print(
-            f"Appended {manifest_appended} row(s) to resolve manifest "
-            f"{args.resolve_manifest}"
+            f"Added {manifest_appended} ARK(s) to {args.resolve_manifest}"
+            + (f"; {waiting} with no url wait for match_preservica.py" if waiting else "")
         )
 
     matched = 0
@@ -1068,14 +1264,16 @@ def main() -> None:
         summary = match_preservica.run(
             args.resolve_manifest,
             None if args.no_master_list else args.master_list,
-            naan=args.naan,
+            naan=args.naan, ark_base=args.ark_base, allowed_hosts=args.allowed_hosts,
         )
         matched = summary.get("updated", 0)
 
-    if not args.no_resolve_manifest and not args.no_slim_manifest \
-            and os.path.exists(args.resolve_manifest):
-        slim_rows = write_slim_manifest(args.resolve_manifest, args.slim_manifest)
-        print(f"Wrote {slim_rows} row(s) (ark, p_path) to {args.slim_manifest}")
+    resolve_errors = []
+    if not args.no_resolve_manifest and os.path.exists(args.resolve_manifest):
+        resolve_errors = check_resolve(read_resolve(args.resolve_manifest, args.ark_base),
+                                       args.naan, args.ark_base, args.allowed_hosts)
+        for e in resolve_errors[:20]:
+            print(f"  {args.resolve_manifest} {e}", file=sys.stderr)
 
     if args.push_to_github:
         # (local file, destination path in the repository, commit message)
@@ -1091,14 +1289,20 @@ def main() -> None:
             to_push.append((
                 args.resolve_manifest,
                 github_paths["resolve"],
-                f"Update resolve manifest ({manifest_appended} new from {source_name}"
-                + (f", {matched} Preservica reference(s) added" if matched else "") + ")",
+                f"Update resolve.csv ({manifest_appended} new from {source_name}"
+                + (f", {matched} matched in Preservica" if matched else "") + ")",
             ))
+        if resolve_errors:
+            to_push = [t for t in to_push if t[0] != args.resolve_manifest]
+            print(
+                f"Not pushing {args.resolve_manifest}: it has {len(resolve_errors)} problem(s), "
+                "listed above. Fix them (python3 check_resolve.py lists them too) and run again.",
+                file=sys.stderr,
+            )
 
         if not to_push:
             print(
-                "Skipped GitHub push: both the master list and the resolve "
-                "manifest are disabled, so there is nothing to push.",
+                "Skipped GitHub push: there is nothing to push.",
                 file=sys.stderr,
             )
         elif not args.github_repo:

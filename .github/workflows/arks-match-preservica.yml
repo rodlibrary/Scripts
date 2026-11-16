@@ -1,7 +1,9 @@
-# Weekly (and by hand). Fills in the Preservica reference of each ARK in the
-# resolver's resolve.csv (github.com/rodlibrary/Resolver), from the ARKs in
-# Preservica's MODS (Archival Resource Key and Location (URL)), and pushes
-# resolve.csv back when it changed. Setup steps are in arks/README.md.
+# Weekly (and by hand). Adds each minted ARK found in Preservica's MODS
+# (Archival Resource Key and Location (URL)) to the resolver's resolve.csv
+# (github.com/rodlibrary/Resolver; columns ark,p_path, as redirects.csv in
+# rodlibrary/Redirects), pointing at the asset's portal page, and pushes
+# resolve.csv back when it changed and passes check_resolve.py's checks.
+# Setup steps are in arks/README.md.
 #
 # This repository is public, so the log shows only counts. The per-asset match
 # report is pushed to the resolver repository (also public) instead.
@@ -18,7 +20,7 @@ on:
         type: boolean
         default: false
       overwrite:
-        description: "Replace a preservica_ref or target_url that differs from what Preservica says"
+        description: "Replace a p_path that differs from the asset's portal page (410 is never replaced)"
         type: boolean
         default: false
 

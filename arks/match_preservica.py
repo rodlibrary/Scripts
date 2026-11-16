@@ -3,8 +3,8 @@
 match_preservica.py
 ===================
 
-Fill in the Preservica reference of each ARK in resolve.csv, from the ARKs
-recorded in Preservica's MODS metadata.
+Add each minted ARK to resolve.csv once it's recorded in an asset's MODS in
+Preservica, pointing it at that asset's page in the public portal.
 
 Rod Library's MODS template records an asset's ARK in two places:
 
@@ -17,18 +17,26 @@ Rod Library's MODS template records an asset's ARK in two places:
 
 Preservica's search index keeps neither the identifier's type nor the URL, so
 this script lists every asset and reads its MODS record (about two requests
-per asset). For every ARK found it looks the ARK up in resolve.csv and:
+per asset). resolve.csv has two columns, like redirects.csv in
+rodlibrary/Redirects:
 
-  * fills in preservica_ref (IO_<reference>) when it's blank;
-  * fills in target_url with the asset's page in Preservica's public portal
-    (--portal-url, default https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C{ref})
-    when it's blank, and changes the status from "unmatched" to "active";
-  * leaves rows that already have a different reference or target alone and
-    reports them (--overwrite replaces them).
+    ark,p_path
+    https://library.uni.edu/ark:/32498/s3x7k9q2mb,https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C<uuid>
 
-An ARK found in more than one asset is never filled in: it's reported, since
-a resolver needs exactly one target. ARKs in Preservica that resolve.csv
-doesn't have are reported too.
+For every ARK found in Preservica that's in the master list (so it was minted
+here):
+
+  * not in resolve.csv yet: a row is added, with p_path the asset's page in
+    Preservica's portal (--portal-url, default
+    https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C{ref});
+  * already there with that page: nothing to do;
+  * already there with another address, or 410 (withdrawn): left alone and
+    reported (--overwrite replaces another address; 410 is never replaced).
+
+An ARK found in more than one asset is never added: it's reported, since a
+resolver needs exactly one target. ARKs in Preservica that aren't in the
+master list are reported too. resolve.csv is only written or pushed if it
+passes the checks in check_resolve.py.
 
 USAGE
 -----
@@ -57,7 +65,6 @@ from __future__ import annotations
 import argparse
 import configparser
 import csv
-import datetime
 import json
 import os
 import re
@@ -79,9 +86,9 @@ if not hasattr(ga, "fetch_file_from_github"):
              "Download the current one from https://github.com/rodlibrary/Scripts/tree/main/arks "
              "into the same folder (both scripts need to be up to date).")
 
-DEFAULT_PORTAL_URL = "https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C{ref}"
+DEFAULT_PORTAL_URL = ga.DEFAULT_PORTAL_URL
 DEFAULT_REPORT = "match_report.csv"
-REPORT_FIELDS = ["preservica_ref", "title", "ark_blade", "location_url", "ark", "outcome", "resolve_row"]
+REPORT_FIELDS = ["preservica_ref", "title", "ark_blade", "location_url", "ark", "outcome", "resolve_line"]
 UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
 
@@ -319,93 +326,99 @@ def gather(api: Preservica, workers: int = 4, log=print) -> list[dict]:
 
 
 def match(rows: list[dict], master: list[dict], assets: list[dict], naan: str, portal_url: str,
-          overwrite: bool = False, today: str = "") -> tuple[list[dict], dict]:
+          overwrite: bool = False, ark_base: str = ga.DEFAULT_ARK_BASE) -> tuple[list[dict], dict]:
     """
-    Apply the Preservica ARKs to the resolve.csv rows (in place). Returns the
-    report rows and a summary of counts.
+    Apply the Preservica ARKs to resolve.csv's rows (in place: rows are
+    added or, with overwrite, replaced). Returns the report rows and a summary
+    of counts.
     """
-    today = today or datetime.date.today().isoformat()
-    by_name = {}
-    for i, r in enumerate(rows):
-        n = ark_name(r.get("ark", ""), naan) or ark_name("ark:/" + r.get("ark", ""), naan)
-        if n:
-            by_name.setdefault(n, i)
-    # A bare blade in MODS may leave out the shoulder: the master list records each blade.
-    by_blade = {}
+    # Every minted ARK, by its name and by its bare blade (MODS may leave out the shoulder).
+    minted, by_blade = {}, {}
     for m in master:
-        blade = (m.get("ark_blade") or "").replace("-", "")
-        n = ark_name(m.get("ark", ""), naan)
-        if blade and n in by_name:
-            by_blade.setdefault(blade, by_name[n])
+        key = ga.ark_key(m.get("ark", ""), naan)
+        if not key:
+            continue
+        minted.setdefault(key, m["ark"].strip())
+        blade = (m.get("ark_blade") or "").replace("-", "").lower()
+        if blade:
+            by_blade.setdefault(blade, key)
+    line_of = {}
+    for i, r in enumerate(rows):
+        key = ga.ark_key(r.get("ark", ""), naan)
+        if key:
+            line_of.setdefault(key, i)
+            minted.setdefault(key, r["ark"])         # listed by hand without being in the master list
+
+    def key_for(name: str) -> "str | None":
+        k = f"{naan}/{name.lower()}"
+        return k if k in minted else by_blade.get(name.lower())
 
     report, holders = [], {}
     for a in assets:
         ref = f"IO_{a['ref']}"
-        url_names = [n for n in (ark_name(u, naan) for u in a["urls"]) if n]
-        blade_names = [n for n in (ark_name(b, naan) for b in a["blades"]) if n]
-        idx = None
-        for n in url_names + blade_names:
-            idx = by_name.get(n, by_blade.get(n))
-            if idx is not None:
-                break
-        names = {n for n in url_names + blade_names}
-        rows_hit = {by_name.get(n, by_blade.get(n)) for n in names} - {None}
+        names = [n for n in (ark_name(x, naan) for x in a["urls"] + a["blades"]) if n]
+        keys = {key_for(n) for n in names}
+        found = keys - {None}
         if a["problem"] and not names:
             outcome = a["problem"]
         elif not names:
             outcome = "ARK fields hold no ARK"
-        elif len(rows_hit) > 1:
-            outcome = "blade and URL name different ARKs in resolve.csv"
-            idx = None
-        elif idx is None:
-            outcome = "ARK not in resolve.csv"
+        elif len(found) > 1:
+            outcome = "blade and URL name different ARKs"
+        elif not found:
+            outcome = "ARK not in the master list"
         else:
             outcome = "found"
-            holders.setdefault(idx, []).append(ref)
+            holders.setdefault(next(iter(found)), []).append(ref)
+        key = next(iter(found)) if len(found) == 1 else ""
         report.append({"preservica_ref": ref, "title": a["title"], "ark_blade": " | ".join(a["blades"]),
                        "location_url": " | ".join(a["urls"]),
-                       "ark": rows[idx].get("ark", "") if idx is not None else "",
-                       "outcome": outcome, "resolve_row": (idx + 2) if idx is not None else ""})
+                       "ark": ga.ark_address(minted[key], ark_base) if key else "",
+                       "outcome": outcome, "resolve_line": "", "_key": key})
 
-    summary = {"assets_with_ark_fields": len(assets), "updated": 0, "already": 0, "conflicts": 0,
-               "shared": 0, "unknown": 0, "problems": 0}
+    summary = {"assets_with_ark_fields": len(assets), "updated": 0, "added": 0, "replaced": 0,
+               "already": 0, "conflicts": 0, "shared": 0, "unknown": 0, "problems": 0}
     for rep in report:
+        key = rep.pop("_key")
         if rep["outcome"] != "found":
             o = rep["outcome"]
-            summary["unknown" if o == "ARK not in resolve.csv" else "conflicts" if o.startswith("blade and URL") else "problems"] += 1
+            summary["unknown" if o == "ARK not in the master list" else
+                    "conflicts" if o.startswith("blade and URL") else "problems"] += 1
             continue
-        idx = rep["resolve_row"] - 2
-        row, ref = rows[idx], rep["preservica_ref"]
-        if len(holders[idx]) > 1:
-            rep["outcome"] = f"ARK found in {len(holders[idx])} assets: {', '.join(holders[idx])}"
+        if len(holders[key]) > 1:
+            rep["outcome"] = f"ARK found in {len(holders[key])} assets: {', '.join(holders[key])}"
             summary["shared"] += 1
             continue
-        current = (row.get("preservica_ref") or "").strip()
-        current_ref = (re.search(UUID, current) or [""])[0].lower()
-        if current and current_ref != ref[3:] and not overwrite:
-            rep["outcome"] = f"resolve.csv already has {current}"
-            summary["conflicts"] += 1
-            continue
-        changes = []
-        if current_ref != ref[3:]:
-            row["preservica_ref"] = ref
-            changes.append("preservica_ref")
-        target = portal_url.format(ref=a_ref(ref), io_ref=ref)
-        if portal_url and (not (row.get("target_url") or "").strip() or (overwrite and row.get("target_url") != target)):
-            if row.get("target_url") != target:
-                row["target_url"] = target
-                changes.append("target_url")
-        if changes and (row.get("status") or "").strip().lower() in ("", "unmatched") and row.get("target_url"):
-            row["status"] = "active"
-            changes.append("status")
-        if changes:
-            note = f"Preservica {ref} matched {today}"
-            row["notes"] = "; ".join(x for x in [(row.get("notes") or "").strip(), note] if x)
-            rep["outcome"] = "updated: " + ", ".join(changes)
+        target = portal_url.format(ref=a_ref(rep["preservica_ref"]), io_ref=rep["preservica_ref"]) if portal_url else ""
+        idx = line_of.get(key)
+        if idx is None:
+            if not target:
+                rep["outcome"] = "not in resolve.csv (no --portal-url, so not added)"
+                summary["already"] += 1
+                continue
+            rows.append({"ark": rep["ark"], "p_path": target})
+            line_of[key] = len(rows) - 1
+            rep["outcome"] = "added"
+            summary["added"] += 1
             summary["updated"] += 1
         else:
-            rep["outcome"] = "already up to date"
-            summary["already"] += 1
+            current = (rows[idx].get("p_path") or "").strip()
+            if not target or current == target:
+                rep["outcome"] = "already up to date"
+                summary["already"] += 1
+            elif current.lower() in (ga.GONE, "gone"):
+                rep["outcome"] = "withdrawn (410) in resolve.csv: left as it is"
+                summary["already"] += 1
+            elif overwrite:
+                rows[idx]["p_path"] = target
+                rep["outcome"] = f"replaced {current}"
+                summary["replaced"] += 1
+                summary["updated"] += 1
+            else:
+                rep["outcome"] = f"resolve.csv already sends it to {current}"
+                summary["conflicts"] += 1
+        rep["resolve_line"] = line_of[key] + 2
+    summary["waiting"] = sum(1 for k in minted if k not in line_of)
     return report, summary
 
 
@@ -417,40 +430,55 @@ def a_ref(io_ref: str) -> str:
 
 def run(resolve_path: str, master_path: "str | None", naan: str = ga.DEFAULT_NAAN,
         portal_url: str = DEFAULT_PORTAL_URL, overwrite: bool = False, dry_run: bool = False,
-        report_path: str = DEFAULT_REPORT, workers: int = 4, api: "Preservica | None" = None) -> dict:
-    """Match resolve.csv against Preservica and update it. Returns the summary."""
-    if not os.path.exists(resolve_path):
-        sys.exit(f"{resolve_path} not found. Run generate_arks.py first, or use --from-github.")
-    fields, rows = read_csv(resolve_path)
+        report_path: str = DEFAULT_REPORT, workers: int = 4, api: "Preservica | None" = None,
+        ark_base: str = ga.DEFAULT_ARK_BASE, allowed_hosts=ga.DEFAULT_ALLOWED_TARGET_HOSTS) -> dict:
+    """Match the master list against Preservica and update resolve.csv. Returns the summary."""
+    if not os.path.exists(resolve_path) and not (master_path and os.path.exists(master_path)):
+        sys.exit(f"Neither {resolve_path} nor the master list was found. Run generate_arks.py first, "
+                 "or use --from-github.")
+    rows = ga.read_resolve(resolve_path, ark_base)
+    converted = ga.read_resolve_raw(resolve_path) is None
     master = read_csv(master_path)[1] if master_path and os.path.exists(master_path) else []
     api = api or Preservica(load_login())
     assets = gather(api, workers)
-    report, summary = match(rows, master, assets, naan, portal_url, overwrite)
+    report, summary = match(rows, master, assets, naan, portal_url, overwrite, ark_base)
     write_csv(report_path, REPORT_FIELDS, report)
-    if summary["updated"] and not dry_run:
-        write_csv(resolve_path, fields or list(ga.RESOLVE_FIELDS), rows)
-    print(f"{summary['assets_with_ark_fields']} asset(s) have ARK fields: {summary['updated']} ARK(s) updated"
+    errors = ga.check_resolve(rows, naan, ark_base, allowed_hosts)
+    summary["errors"] = errors
+    if errors:
+        print(f"resolve.csv has {len(errors)} problem(s), so it wasn't changed:", file=sys.stderr)
+        for e in errors[:20]:
+            print(f"  {e}", file=sys.stderr)
+    elif (summary["updated"] or converted) and not dry_run:
+        ga.write_resolve(resolve_path, rows)
+    print(f"{summary['assets_with_ark_fields']} asset(s) have ARK fields: {summary['added']} ARK(s) added to resolve.csv"
+          f"{', ' + str(summary['replaced']) + ' replaced' if summary['replaced'] else ''}"
           f"{' (dry run: resolve.csv not changed)' if dry_run and summary['updated'] else ''}, "
-          f"{summary['already']} already up to date, {summary['unknown']} not in resolve.csv, "
+          f"{summary['already']} already listed, {summary['unknown']} not in the master list, "
           f"{summary['shared']} in more than one asset, {summary['conflicts']} conflict(s), "
-          f"{summary['problems']} asset(s) with unreadable ARK fields. "
-          f"Details: {report_path}")
+          f"{summary['problems']} asset(s) with unreadable ARK fields; "
+          f"{summary['waiting']} minted ARK(s) not in resolve.csv yet. Details: {report_path}")
     return summary
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Fill in resolve.csv's Preservica references from the ARKs in Preservica's MODS.")
+    ap = argparse.ArgumentParser(description="Add the minted ARKs found in Preservica's MODS to resolve.csv.")
     ap.add_argument("--resolve", default=ga.DEFAULT_RESOLVE_MANIFEST, help="resolve.csv to update (default: resolve.csv)")
     ap.add_argument("--master-list", default=ga.DEFAULT_MASTER_LIST,
                     help="ARK master list, to recognise bare blades that leave out the shoulder (default: ark_master_list.csv)")
     ap.add_argument("--report", default=DEFAULT_REPORT, help=f"report CSV (default: {DEFAULT_REPORT})")
     ap.add_argument("--naan", default=ga.DEFAULT_NAAN, help=f"only ARKs under this NAAN (default: {ga.DEFAULT_NAAN})")
     ap.add_argument("--portal-url", default=os.environ.get("PRESERVICA_PORTAL_URL") or DEFAULT_PORTAL_URL,
-                    help="target_url for a matched ARK with none; {ref} is the asset's reference "
+                    help="p_path for a matched ARK; {ref} is the asset's reference "
                          # argparse treats % in help as formatting, so the URL's %3A and %7C are doubled.
-                         f"(default: {DEFAULT_PORTAL_URL.replace('%', '%%')}). Use '' to leave target_url alone.")
+                         f"(default: {DEFAULT_PORTAL_URL.replace('%', '%%')}). Use '' to report only.")
     ap.add_argument("--overwrite", action="store_true",
-                    help="replace a preservica_ref or target_url that differs from what Preservica says")
+                    help="replace a p_path that differs from the asset's page (410 is never replaced)")
+    ap.add_argument("--ark-base", default=os.environ.get("ARK_BASE_URL") or ga.DEFAULT_ARK_BASE,
+                    help=f"address ARKs resolve at, for resolve.csv's ark column (default: {ga.DEFAULT_ARK_BASE})")
+    ap.add_argument("--allowed-host", action="append",
+                    help="host a p_path may point to; repeat for several (default: "
+                         + ", ".join(ga.DEFAULT_ALLOWED_TARGET_HOSTS) + ", or ALLOWED_TARGET_HOSTS)")
     ap.add_argument("--dry-run", action="store_true", help="write the report only; don't change or push resolve.csv")
     ap.add_argument("--workers", type=int, default=4, help="assets read at once (default 4)")
     ap.add_argument("--from-github", action="store_true", help="start from GitHub's resolve.csv and master list")
@@ -469,6 +497,7 @@ def main() -> None:
     ap.add_argument("--github-api-url", default=ga.DEFAULT_GITHUB_API_URL, help=argparse.SUPPRESS)
     ga.reject_gitlab_options()
     args = ap.parse_args()
+    hosts = ga.allowed_hosts(args.allowed_host)
 
     token = os.environ.get(args.github_token_env, "").strip()
     repo, branch, api_url = args.github_repo, args.github_branch, args.github_api_url
@@ -476,6 +505,7 @@ def main() -> None:
              "master": args.github_master_path or os.path.basename(args.master_list)}
     if (args.from_github or args.push_to_github) and not token:
         sys.exit(f"Set {args.github_token_env} to a GitHub token with Contents: Read and write on {repo}.")
+    pushed_before = None      # GitHub's resolve.csv, to push only when it changes
     if args.from_github:
         for local_path, key in ((args.resolve, "resolve"), (args.master_list, "master")):
             try:
@@ -483,9 +513,11 @@ def main() -> None:
             except RuntimeError as e:
                 sys.exit(f"Couldn't download {paths[key]} from GitHub: {e}")
             if data is None:
-                if key == "resolve":
+                if key == "master":
                     sys.exit(f"{paths[key]} isn't in {repo} yet. Run generate_arks.py --push-to-github first.")
                 continue
+            if key == "resolve":
+                pushed_before = data
             with open(local_path, "wb") as f:
                 f.write(data)
             print(f"Downloaded {paths[key]} from {repo}.")
@@ -495,20 +527,25 @@ def main() -> None:
             remote = ga.fetch_file_from_github(api_url, repo, paths["resolve"], branch, token)
         except RuntimeError as e:
             sys.exit(f"Couldn't download {paths['resolve']} from GitHub: {e}")
-        ga.merge_into_local(args.resolve, remote)
+        ga.merge_resolve(args.resolve, remote, args.ark_base)
+        pushed_before = remote
 
     summary = run(args.resolve, args.master_list, args.naan, args.portal_url, args.overwrite,
-                  args.dry_run, args.report, args.workers)
+                  args.dry_run, args.report, args.workers, ark_base=args.ark_base, allowed_hosts=hosts)
 
     step = os.environ.get("GITHUB_STEP_SUMMARY")
     if step:
         with open(step, "a", encoding="utf-8") as f:
-            f.write(f"**{summary['updated']}** ARK(s) updated from Preservica"
-                    f"{' (dry run)' if args.dry_run else ''}; {summary['already']} already up to date; "
-                    f"{summary['unknown']} ARK(s) in Preservica not in resolve.csv; "
+            f.write(f"**{summary['added']}** ARK(s) added to resolve.csv"
+                    f"{', ' + str(summary['replaced']) + ' replaced' if summary['replaced'] else ''}"
+                    f"{' (dry run)' if args.dry_run else ''}; {summary['already']} already listed; "
+                    f"{summary['unknown']} ARK(s) in Preservica not in the master list; "
                     f"{summary['shared']} in more than one asset; {summary['conflicts']} conflict(s); "
-                    f"{summary['problems']} asset(s) with unreadable ARK fields. "
-                    f"{summary['assets_with_ark_fields']} asset(s) have ARK fields.\n")
+                    f"{summary['problems']} asset(s) with unreadable ARK fields; "
+                    f"{summary['waiting']} minted ARK(s) not in resolve.csv yet. "
+                    f"{summary['assets_with_ark_fields']} asset(s) have ARK fields."
+                    + (f" **resolve.csv has {len(summary['errors'])} problem(s) and wasn't changed.**"
+                       if summary["errors"] else "") + "\n")
 
     if args.push_to_github and args.push_report:
         report_path = args.github_report_path or os.path.basename(args.report)
@@ -523,12 +560,19 @@ def main() -> None:
             print(f"Warning: the report couldn't be pushed to GitHub: {e}", file=sys.stderr)
 
     if args.push_to_github and not args.dry_run:
-        if not summary["updated"]:
-            print("resolve.csv unchanged; nothing to push.")
-            return
+        if summary["errors"]:
+            sys.exit("resolve.csv has problems (listed above), so it wasn't pushed. "
+                     "Fix them in the resolver repository; check_resolve.py --from-github lists them.")
+        with open(args.resolve, "rb") as f:
+            if f.read() == pushed_before:
+                print("resolve.csv unchanged; nothing to push.")
+                return
+        message = (f"Add {summary['added']} ARK(s) matched in Preservica"
+                   + (f", replace {summary['replaced']}" if summary["replaced"] else "")
+                   if summary["updated"] else "Write resolve.csv as ark, p_path")
         try:
             url = ga.push_file_to_github(args.resolve, api_url, repo, paths["resolve"], branch, token,
-                                         f"Add Preservica references for {summary['updated']} ARK(s)")
+                                         message)
         except RuntimeError as e:
             sys.exit(f"GitHub push failed: {e}")
         print(f"Pushed {args.resolve} to GitHub: {url}")
