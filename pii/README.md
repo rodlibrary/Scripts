@@ -7,7 +7,7 @@ There are three tools here, from quickest to most thorough:
 | Tool | Best for | Finds PII in | Removes PII? | Runs on |
 |---|---|---|---|---|
 | [`pii_scanner.py`](#pii_scannerpy) | A quick check of a folder of PDFs | PDFs with a text layer | No, report only | Local |
-| [`presidio_review/`](presidio_review/) | Small to medium collections where a person reviews each finding before redaction | PDFs (incl. scans), images, Word, Excel, CSV, text | Yes, after human review | Local |
+| [`presidio_review/`](presidio_review/) | Small to medium collections where a person reviews each finding before redaction | PDFs (incl. scans), images, Word, Excel, CSV, text | Yes, after human review | Local or HPC (SLURM, see [HPC.md](presidio_review/HPC.md)) |
 | [`pii_pipeline/`](pii_pipeline/) | Large collections and Intranet Quorum (IQ) / Senate CSS database exports | PDFs, images, email, CSV, text, IQ exports | Yes, automatically | HPC (SLURM) or local |
 
 All three produce a CSV of findings. **Automated detection misses things and flags things that aren't PII, so always have a person review the results before anything is released.**
@@ -59,7 +59,7 @@ Uses [Microsoft Presidio](https://microsoft.github.io/presidio/) to find PII, th
 analyze.py  →  review.csv  →  reviewer marks REDACT / KEEP  →  anonymize.py  →  redacted copies + audit log
 ```
 
-Full instructions: **[presidio_review/README.md](presidio_review/README.md)**. The `sample/` folder holds made-up test files, and `review.csv`, `review_settings.json` and `review_warnings.txt` are the results of analyzing them, so you can see what the output looks like.
+Full instructions: **[presidio_review/README.md](presidio_review/README.md)**; for running it on an HPC cluster with SLURM, **[presidio_review/HPC.md](presidio_review/HPC.md)**. The `sample/` folder holds made-up test files, and `review.csv`, `review_settings.json` and `review_warnings.txt` are the results of analyzing them, so you can see what the output looks like.
 
 ---
 

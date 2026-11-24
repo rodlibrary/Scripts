@@ -18,8 +18,13 @@ analyze.py ──────┤ Tesseract OCR (scans, photos)            ├─
 | `ocr.py` | Tesseract OCR with orientation detection and an on-disk cache |
 | `structured.py` | Presidio Structured: column-level detection and anonymization for CSV/XLSX |
 | `pii_utils.py` | Cleans up overlapping and duplicate Presidio results |
+| `slurm/` | Setup and job scripts for running on an HPC cluster; see [HPC.md](HPC.md) |
 
 ## Setup
+
+> **On an HPC cluster with Slurm?** Follow [HPC.md](HPC.md) instead: it installs everything
+> into a Python virtual environment (and Tesseract without root) and runs steps 1 and 3 as
+> Slurm jobs.
 
 ```bash
 pip install -r requirements.txt
