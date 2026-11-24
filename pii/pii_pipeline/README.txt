@@ -56,7 +56,7 @@ the data in /data/$USER/pii.
      cd /data/$USER
      git clone https://github.com/rodlibrary/Scripts.git
      cd Scripts/pii/pii_pipeline
-   (Or copy this folder up with scp, rsync, Globus or the cluster's web portal.)
+   (Or copy this folder up with WinSCP)
 
 2. Load Python 3.11 or newer. Presidio needs 3.11-3.14, and the system
    python3 on many clusters is older:
