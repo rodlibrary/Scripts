@@ -67,49 +67,76 @@ Full instructions: **[presidio_review/README.md](presidio_review/README.md)**; f
 
 Presidio-based analysis and anonymization designed for the HPC, including field-by-field handling of Intranet Quorum (IQ) / SCDIF exports through an editable policy file (`iq_field_policy.csv`).
 
-Full instructions: **[pii_pipeline/README.txt](pii_pipeline/README.txt)**. Before your first run:
+Full instructions: **[pii_pipeline/README.txt](pii_pipeline/README.txt)**.
 
-### 1. Install Presidio on the HPC (once)
+**Input directory: `/data/<catID>/pii`**, for both IQ and Non-IQ data. Every job reads from there (subfolders included) and writes its results into subfolders of it. To process only some files, use `file=` (see [README.txt](pii_pipeline/README.txt)) rather than another folder.
+
+| Folder | Holds |
+|---|---|
+| `/data/<catID>/pve/` | The Python environment from step 2 |
+| `/data/<catID>/pii/` | **Input:** the files to check |
+| `/data/<catID>/pii/results/` | Job logs, plus Non-IQ results |
+| `/data/<catID>/pii/iq_results/` | IQ results |
+| `/data/<catID>/pii/anonymize*/`, `iq_anonymize*/` | Anonymized copies |
+
+The scripts find these folders from your username (`$USER`, your catID), so there's nothing to edit.
+
+### 1. Upload the scripts and create the folders (once)
+
+1. Upload **all** the files in `pii_pipeline/` to one folder in your HPC directory (e.g. with WinSCP), and always run `sbatch` from that folder. The jobs depend on `analyze_pipeline.py`, `anonymize_pipeline.py` and `iq_policy.py` being next to them.
+2. Create the input and results folders. The results folder must exist **before** you submit a job, because that's where SLURM writes the job's log:
+
+   ```bash
+   mkdir -p /data/$USER/pii/results
+   chmod 700 /data/$USER/pii
+   ```
+
+### 2. Install Presidio in a virtual environment (once)
+
+On a login node, from the folder you uploaded the scripts to:
 
 ```bash
 export TMPDIR="/home/$USER/data/tmp"
 mkdir -p $TMPDIR
 module load python3.11
-python -m venv pve
-pve/bin/pip install -U presidio-analyzer presidio-anonymizer presidio-structured spacy pandas pdfminer.six pytesseract pillow
-pve/bin/python -m spacy download en_core_web_lg
+python -m venv /data/$USER/pve
+/data/$USER/pve/bin/pip install -U pip
+/data/$USER/pve/bin/pip install -r requirements.txt
+/data/$USER/pve/bin/python -m spacy download en_core_web_lg
 ```
 
-### 2. Set up folders and upload
+Images are read with Tesseract OCR. Use `module load tesseract` if your cluster has it; otherwise install it without root as in [README.txt](pii_pipeline/README.txt), SETUP step 4. If a job fails with `error while loading shared libraries: libpython3...`, run `module load python3.11` before `sbatch`.
 
-The scripts find your folders automatically from your username, so there's nothing to edit. They expect this layout:
-
-| Folder | Holds |
-|---|---|
-| `/data/<catID>/pve/` | The Python environment from step 1 |
-| `/data/<catID>/pii/` | The files to check |
-| `/data/<catID>/pii/results/` | Job logs, plus results from `analyze_pipeline.py` |
-
-1. Create the input and results folders. The results folder must exist **before** you submit a job, because that's where SLURM writes the job's log:
-
-   ```bash
-   mkdir -p /data/$USER/pii/results
-   ```
-
-2. Upload **all** the files in `pii_pipeline/` to one folder in your HPC directory, and run `sbatch` from that folder. The IQ scripts depend on `analyze_pipeline.py`, `anonymize_pipeline.py` and `iq_policy.py` being next to them.
-3. Upload the files to check into `/data/<catID>/pii/`.
+Each job checks the environment before it starts, and stops with the exact command to run if a package is missing.
 
 ### 3. Run
 
-Each job's output folder is created inside `/data/<catID>/pii/`, and each job prints the command for the next step when it finishes.
+Upload the files to check into `/data/<catID>/pii/`. Then follow **IQ data** if that folder holds any IQ / Senate CSS exports, or **Non-IQ data** if it doesn't. Each job prints the command for the next step when it finishes.
+
+#### IQ data
+
+For Intranet Quorum / Senate CSS exports (SCDIF `.dat`, or pipe-delimited / header-row `.txt` exports), plus any PDFs, emails or other files alongside them, which are handled the same way as Non-IQ data. Edit `iq_field_policy.csv` first to set what happens to each export field (`redact`, `scan`, `keep` or `keep_all`).
 
 | Step | Command |
 |---|---|
-| Analyze (IQ policy; works for all file types) | `sbatch iq_analyze.script` |
-| Anonymize IQ results | `sbatch iq_anonymize.script /data/$USER/pii/iq_results/pii_results_<job>.csv` |
-| Analyze without the IQ policy | `python analyze_pipeline.py --input_dir /data/$USER/pii` |
-| Anonymize those results | `sbatch anonymize.script /data/$USER/pii/results/pii_results_<job>.csv` |
+| Convert, only if the export isn't standard tab-delimited SCDIF (keep the original **outside** `/data/<catID>/pii`) | `python convert_to_scdif.py original.txt --output_dir /data/$USER/pii` |
+| Analyze | `sbatch iq_analyze.script` |
+| Anonymize | `sbatch iq_anonymize.script /data/$USER/pii/iq_results/pii_results_<job>.csv` |
 
-Add a second argument to keep some types unchanged, e.g. `... pii_results_123.csv names,dates`. To get an email when a job finishes, add `--mail-type=END,FAIL --mail-user=you@uni.edu` after `sbatch`.
+Add a second argument to keep some types unchanged in `scan` fields, e.g. `... pii_results_123.csv names,dates`. After changing a field to `redact` or `keep_all`, re-run only the anonymize step. After changing one from `redact`/`keep_all` to `scan`/`keep`, re-run both (until then it shows as `<UNSCANNED>`).
+
+#### Non-IQ data
+
+For PDFs, images, emails (`.eml`), CSVs and plain-text files, with no IQ exports in `/data/<catID>/pii`.
+
+| Step | Command |
+|---|---|
+| Analyze | `sbatch analyze.script` |
+| Review | Check `results/pii_results_<job>.csv`, and `results/pii_errors_<job>.csv` for files that weren't analyzed |
+| Anonymize | `sbatch anonymize.script /data/$USER/pii/results/pii_results_<job>.csv` |
+
+Add a second argument to keep some types unchanged, e.g. `... pii_results_123.csv names,dates`. Scanned PDFs with no text layer aren't analyzed (they're listed in the errors file as "No text extracted"). OCR them first (see [`../ocr`](../ocr/)) or use `presidio_review`.
+
+To get an email when a job finishes, add `--mail-type=END,FAIL --mail-user=you@uni.edu` after `sbatch`.
 
 The data contains PII. Keep it off OneDrive and other synced folders.
