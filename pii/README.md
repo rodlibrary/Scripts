@@ -7,7 +7,7 @@ There are three tools here, from quickest to most thorough:
 | Tool | Best for | Finds PII in | Removes PII? | Runs on |
 |---|---|---|---|---|
 | [`pii_scanner.py`](#pii_scannerpy) | A quick check of a folder of PDFs | PDFs with a text layer | No, report only | Local |
-| [`presidio_review/`](presidio_review/) | Small to medium collections where a person reviews each finding before redaction | PDFs (incl. scans), images, Word, Excel, CSV, text | Yes, after human review | Local or HPC (SLURM, see [HPC.md](presidio_review/HPC.md)) |
+| [`presidio_review/`](presidio_review/) | Small to medium collections where a person reviews each finding before redaction | PDFs (incl. scans), images, Word, Excel, CSV, text | Yes, after human review & anonymize step | Local or HPC (SLURM, see [HPC.md](presidio_review/HPC.md)) |
 | [`pii_pipeline/`](pii_pipeline/) | Large collections and Intranet Quorum (IQ) / Senate CSS database exports | PDFs, images, email, CSV, text, IQ exports | Yes, automatically | HPC (SLURM, see [README.txt](pii_pipeline/README.txt)) or local |
 
 All three produce a CSV of findings. **Automated detection misses things and flags things that aren't PII, so always have a person review the results before anything is released.**
