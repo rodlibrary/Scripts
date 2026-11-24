@@ -64,6 +64,9 @@ mkdir -p /data/$USER/pii/results
 VENV="/data/$USER/pve"
 source "$VENV/bin/activate"
 
+# Tesseract installed without root (README.txt "SETUP", step 4)
+[ -x "/data/$USER/tesseract/bin/tesseract" ] && export PATH="/data/$USER/tesseract/bin:$PATH"
+
 # Define input/output paths
 INPUT_DIR="/data/$USER/pii"
 OUTPUT_BASE="/data/$USER/pii/iq_anonymize"

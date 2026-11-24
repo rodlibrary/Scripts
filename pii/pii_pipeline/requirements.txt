@@ -1,0 +1,11 @@
+presidio-analyzer
+presidio-anonymizer
+presidio-structured
+spacy
+pandas
+pdfminer.six
+pytesseract
+Pillow
+# Also needed, installed separately (see README.txt "SETUP"):
+#   the spaCy model:  python -m spacy download en_core_web_lg
+#   Tesseract OCR (a separate program, for scans and images)
