@@ -1,0 +1,116 @@
+#!/bin/bash
+#SBATCH --job-name=presidio_anonymize
+#SBATCH --output=/data/%u/presidio_review/logs/anonymize_%j.log
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=24:00:00
+##SBATCH --partition=CHANGE_ME
+##SBATCH --account=CHANGE_ME
+
+# Step 3: apply the reviewers' decisions and write redacted copies (runs anonymize.py).
+# Submit from the presidio_review folder, after the review CSV has been edited and
+# copied back to the SAME path it was written to:
+#
+#   sbatch slurm/anonymize.script /data/$USER/presidio_review/review/<job_id>/review.csv
+#   sbatch slurm/anonymize.script <review.csv> --operator mask --pdf-dpi 300
+#                                                     any anonymize.py options
+#
+# For an analysis that ran as a job array, use the same --array range and pass the
+# folder instead of a CSV:
+#
+#   sbatch --array=0-<N-1> slurm/anonymize.script /data/$USER/presidio_review/review/<job_id>
+#
+# Redacted files go to $DATA/redacted/<job_id>/ (array jobs: .../<job_id>/<subfolder>/),
+# with audit_log.csv alongside them.
+set -euo pipefail
+
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+if [ ! -f "$SUBMIT_DIR/anonymize.py" ] || [ ! -f "$SUBMIT_DIR/slurm/env.sh" ]; then
+    echo "ERROR: submit this job from the presidio_review folder (the one with anonymize.py):" >&2
+    echo "       cd path/to/presidio_review && sbatch slurm/anonymize.script <review.csv>" >&2
+    exit 1
+fi
+cd "$SUBMIT_DIR"
+source slurm/env.sh
+
+TARGET="${1:?Usage: sbatch slurm/anonymize.script <review.csv | review folder for array jobs> [anonymize.py options]}"
+shift
+EXTRA=("$@")
+for arg in "${EXTRA[@]+"${EXTRA[@]}"}"; do
+    case "$arg" in
+        --input|--input=*|--review|--review=*|--output-dir|--output-dir=*)
+            echo "ERROR: don't pass $arg; this script sets it from the review CSV." >&2
+            exit 1 ;;
+    esac
+done
+
+if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
+    [ -d "$TARGET" ] || { echo "ERROR: array jobs need the review FOLDER, not a CSV: $TARGET" >&2; exit 1; }
+    mapfile -t CSVS < <(find "$TARGET" -mindepth 1 -maxdepth 1 -type f -name '*.csv' | sort)
+    N=${#CSVS[@]}
+    if [ "$SLURM_ARRAY_TASK_ID" -ge "$N" ]; then
+        echo "Task $SLURM_ARRAY_TASK_ID: $TARGET has only $N review CSVs (use --array=0-$((N - 1))). Nothing to do."
+        exit 0
+    fi
+    REVIEW_CSV="${CSVS[$SLURM_ARRAY_TASK_ID]}"
+    echo "Array task $SLURM_ARRAY_TASK_ID of $N"
+else
+    if [ -d "$TARGET" ]; then
+        echo "ERROR: $TARGET is a folder. Pass the review CSV, or submit with --array" >&2
+        echo "       if the analysis ran as a job array." >&2
+        exit 1
+    fi
+    REVIEW_CSV="$TARGET"
+fi
+[ -f "$REVIEW_CSV" ] || { echo "ERROR: review CSV not found: $REVIEW_CSV" >&2; exit 1; }
+REVIEW_CSV="$(realpath "$REVIEW_CSV")"
+REVIEW_DIR="$(dirname "$REVIEW_CSV")"
+NAME="$(basename "$REVIEW_CSV" .csv)"
+
+# The input folder analyze.script recorded. anonymize.py also checks each file's
+# SHA-256, so the documents must not have moved or changed since analysis.
+INPUT_FILE="$REVIEW_DIR/${NAME}_input.txt"
+if [ ! -f "$INPUT_FILE" ]; then
+    echo "ERROR: $INPUT_FILE not found. The review CSV must keep the name and folder" >&2
+    echo "       analyze.script gave it (rename it back if it was saved as e.g. 'review (1).csv')." >&2
+    exit 1
+fi
+INPUT="$(cat "$INPUT_FILE")"
+[ -e "$INPUT" ] || { echo "ERROR: the analyzed input no longer exists: $INPUT" >&2; exit 1; }
+[ -f "$REVIEW_DIR/${NAME}_settings.json" ] || \
+    echo "WARNING: ${NAME}_settings.json is missing; OCR settings fall back to defaults."
+
+JOB_NAME="$(basename "$REVIEW_DIR")"
+if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
+    OUT_DIR="$DATA/redacted/$JOB_NAME/$NAME"
+else
+    OUT_DIR="$DATA/redacted/$JOB_NAME"
+fi
+
+echo "Job started at: $(date)"
+echo "Review: $REVIEW_CSV"
+echo "Input:  $INPUT"
+echo "Output: $OUT_DIR"
+
+load_env
+activate_venv
+export OMP_THREAD_LIMIT="${SLURM_CPUS_PER_TASK:-1}"
+OCR_MODE="$(python -c 'import json,sys; o=json.load(open(sys.argv[1])).get("ocr",{}); print("off" if o.get("mode")=="off" else o.get("lang","eng"))' "$REVIEW_DIR/${NAME}_settings.json" 2>/dev/null || echo eng)"
+# Redacted PDFs get a new OCR text layer, so Tesseract is needed unless --no-text-layer.
+case " ${EXTRA[*]-} " in *" --no-text-layer "*) ;; *) [ "$OCR_MODE" = "off" ] && OCR_MODE="eng" ;; esac
+preflight "$OCR_MODE"
+
+mkdir -p "$OUT_DIR"
+chmod 700 "$DATA/redacted/$JOB_NAME"
+
+python anonymize.py --input "$INPUT" --review "$REVIEW_CSV" --output-dir "$OUT_DIR" \
+    "${EXTRA[@]+"${EXTRA[@]}"}"
+
+echo
+echo "Redacted files: $OUT_DIR"
+echo "Audit log:      $OUT_DIR/audit_log.csv"
+echo "When the job is done, delete the OCR cache (it contains document text):"
+echo "    rm -r '$REVIEW_DIR/${NAME}_ocr_cache'"
+echo "Job finished successfully at: $(date)"

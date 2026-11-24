@@ -1,0 +1,116 @@
+#!/bin/bash
+#SBATCH --job-name=presidio_analyze
+#SBATCH --output=/data/%u/presidio_review/logs/analyze_%j.log
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=24:00:00
+##SBATCH --partition=CHANGE_ME
+##SBATCH --account=CHANGE_ME
+
+# Step 1: find PII and write a review CSV (runs analyze.py).
+# Submit from the presidio_review folder:
+#
+#   sbatch slurm/analyze.script                              everything in $DATA/docs
+#   sbatch slurm/analyze.script input=letters                only $DATA/docs/letters
+#   sbatch slurm/analyze.script input=/full/path/to/folder   any folder (or one file)
+#   sbatch slurm/analyze.script --ocr always --exclude-entities UK_NHS AU_TFN
+#                                                            any analyze.py options
+#
+# Large collections, one job-array task per subfolder of the input folder:
+#
+#   ls -d /data/$USER/presidio_review/docs/*/ | wc -l        N = number of subfolders
+#   sbatch --array=0-<N-1> slurm/analyze.script
+#
+# Results go to $DATA/review/<job_id>/:
+#   review.csv, review_warnings.txt, review_settings.json, review_ocr_cache/,
+#   review_input.txt         (array jobs: <subfolder>.csv, <subfolder>_warnings.txt, ...)
+# Keep that folder together: anonymize.script needs every file in it.
+set -euo pipefail
+
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+if [ ! -f "$SUBMIT_DIR/analyze.py" ] || [ ! -f "$SUBMIT_DIR/slurm/env.sh" ]; then
+    echo "ERROR: submit this job from the presidio_review folder (the one with analyze.py):" >&2
+    echo "       cd path/to/presidio_review && sbatch slurm/analyze.script" >&2
+    exit 1
+fi
+cd "$SUBMIT_DIR"
+source slurm/env.sh
+
+INPUT_ARG=""
+EXTRA=()
+for arg in "$@"; do
+    case "$arg" in
+        input=*) INPUT_ARG="${arg#input=}" ;;
+        --input|--input=*|--output|--output=*)
+            echo "ERROR: don't pass $arg; use input=FOLDER. The output location is set by this script." >&2
+            exit 1 ;;
+        *) EXTRA+=("$arg") ;;
+    esac
+done
+
+case "$INPUT_ARG" in
+    "")  INPUT="$DATA/docs" ;;
+    /*)  INPUT="$INPUT_ARG" ;;
+    *)   INPUT="$DATA/docs/$INPUT_ARG" ;;
+esac
+[ -e "$INPUT" ] || { echo "ERROR: input not found: $INPUT" >&2; exit 1; }
+INPUT="$(realpath "$INPUT")"
+
+JOB="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-local}}"
+OUT_DIR="$DATA/review/$JOB"
+
+if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
+    # Array task: take the Nth subfolder (sorted by name) of the input folder.
+    [ -d "$INPUT" ] || { echo "ERROR: array jobs need a folder as input, not a file." >&2; exit 1; }
+    if find "$INPUT" -mindepth 1 -maxdepth 1 -type f | grep -q .; then
+        echo "ERROR: $INPUT has files directly in it. Array tasks only process its" >&2
+        echo "       subfolders, so those files would be skipped. Move them into a" >&2
+        echo "       subfolder, or submit without --array." >&2
+        exit 1
+    fi
+    mapfile -t SUBDIRS < <(find "$INPUT" -mindepth 1 -maxdepth 1 -type d | sort)
+    N=${#SUBDIRS[@]}
+    if [ "$SLURM_ARRAY_TASK_ID" -ge "$N" ]; then
+        echo "Task $SLURM_ARRAY_TASK_ID: $INPUT has only $N subfolders (use --array=0-$((N - 1))). Nothing to do."
+        exit 0
+    fi
+    INPUT="${SUBDIRS[$SLURM_ARRAY_TASK_ID]}"
+    NAME="$(basename "$INPUT")"
+    echo "Array task $SLURM_ARRAY_TASK_ID of $N: $NAME"
+else
+    NAME="review"
+fi
+REVIEW_CSV="$OUT_DIR/$NAME.csv"
+
+echo "Job started at: $(date)"
+echo "Input:  $INPUT"
+echo "Output: $REVIEW_CSV"
+
+load_env
+activate_venv
+# Tesseract uses OpenMP; keep it within the CPUs Slurm gave this job.
+export OMP_THREAD_LIMIT="${SLURM_CPUS_PER_TASK:-1}"
+preflight "$(ocr_langs_from_args "${EXTRA[@]+"${EXTRA[@]}"}")"
+
+mkdir -p "$OUT_DIR"
+chmod 700 "$OUT_DIR"
+if [ -e "$REVIEW_CSV" ]; then
+    echo "ERROR: $REVIEW_CSV already exists; not overwriting reviewed decisions." >&2
+    exit 1
+fi
+# Record the input so anonymize.script uses exactly the same files.
+echo "$INPUT" > "$OUT_DIR/${NAME}_input.txt"
+
+python analyze.py --input "$INPUT" --output "$REVIEW_CSV" "${EXTRA[@]+"${EXTRA[@]}"}"
+
+echo
+[ -f "$OUT_DIR/${NAME}_warnings.txt" ] && echo "Read the warnings: $OUT_DIR/${NAME}_warnings.txt"
+echo "Review: $REVIEW_CSV"
+if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
+    echo "Next (after review, same --array range): sbatch --array=0-$((N - 1)) slurm/anonymize.script $OUT_DIR"
+else
+    echo "Next (after review): sbatch slurm/anonymize.script $REVIEW_CSV"
+fi
+echo "Job finished successfully at: $(date)"
