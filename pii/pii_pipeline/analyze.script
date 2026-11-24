@@ -1,0 +1,143 @@
+#!/bin/bash
+#SBATCH --job-name=analyze_pii
+#SBATCH --output=/data/%u/pii/results/analyze_%j.log
+#SBATCH --error=/data/%u/pii/results/analyze_%j.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=24:00:00
+
+# Non-IQ data: PII analysis of PDFs, images, emails, CSVs and text files.
+# (For IQ / SCDIF exports use iq_analyze.script instead.)
+#
+# Usage:
+#   sbatch analyze.script                                  # all files in /data/$USER/pii
+#   sbatch analyze.script file=docs/letter.pdf             # only this file
+#   sbatch analyze.script file='docs/*.eml',report.pdf     # wildcards (quoted), several
+#   sbatch analyze.script --entities PERSON,EMAIL_ADDRESS  # any analyze_pipeline.py option
+#
+# file= is a path relative to /data/$USER/pii. A name without a folder also
+# matches that file name in any subfolder. Subfolders are always scanned;
+# earlier results and anonymized output inside /data/$USER/pii are skipped.
+#
+# Results go to /data/$USER/pii/results/pii_results_<job_id>.csv (errors in
+# pii_errors_<job_id>.csv). Pass that results CSV to anonymize.script.
+ONLY_OPTION=()
+EXTRA=()
+for arg in "$@"; do
+    case "$arg" in
+        file=*)
+            IFS=',' read -ra pats <<< "${arg#file=}"
+            for p in "${pats[@]}"; do
+                [ -n "$p" ] && ONLY_OPTION+=(--only "$p")
+            done ;;
+        --input_dir*|--output_dir*|--num_procs*|--job_id*)
+            echo "ERROR: $arg is set by this script; don't pass it." >&2
+            exit 1 ;;
+        *)
+            EXTRA+=("$arg") ;;
+    esac
+done
+
+# Stop execution if any step fails
+set -e
+
+echo "Job started at: $(date)"
+
+# NOTE: /data/$USER/pii/results must exist *before* sbatch is run, since
+# SLURM opens the --output/--error log files at job start.
+mkdir -p /data/$USER/pii/results
+
+# Activate your virtual environment
+VENV="/data/$USER/pve"
+if [ ! -f "$VENV/bin/activate" ]; then
+    echo "ERROR: no virtual environment at $VENV. See SETUP in README.txt." >&2
+    exit 1
+fi
+source "$VENV/bin/activate"
+
+# Tesseract installed without root (README.txt "SETUP", step 4)
+[ -x "/data/$USER/tesseract/bin/tesseract" ] && export PATH="/data/$USER/tesseract/bin:$PATH"
+
+# Define input/output paths
+INPUT_DIR="/data/$USER/pii"
+OUTPUT_DIR="/data/$USER/pii/results"
+
+# The pipeline scripts live in the directory sbatch was run from.
+SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+cd "$SCRIPT_DIR"
+
+# Output folders inside INPUT_DIR that must not be scanned as input.
+EXCLUDES=()
+for d in "$INPUT_DIR"/results "$INPUT_DIR"/iq_results "$INPUT_DIR"/anonymize* "$INPUT_DIR"/iq_anonymize*; do
+    [ -d "$d" ] && EXCLUDES+=(--exclude_dir "$d")
+done
+
+# ---------------------------------------------------------------------------
+# Preflight checks: fail fast, with a clear message, before any work starts.
+# ---------------------------------------------------------------------------
+echo "Python: $(command -v python)"
+python -c "import sys; print('Python executable:', sys.executable); print('Python version:', sys.version.split()[0])"
+
+if [ ! -f "$SCRIPT_DIR/analyze_pipeline.py" ]; then
+    echo "ERROR: analyze_pipeline.py not found in $SCRIPT_DIR." >&2
+    echo "       Run sbatch from the folder that contains the pipeline scripts." >&2
+    exit 1
+fi
+
+python - "$VENV" <<'EOF'
+import importlib, sys
+needed = {
+    "pandas": "pandas",
+    "presidio_analyzer": "presidio-analyzer",
+    "presidio_structured": "presidio-structured",
+    "spacy": "spacy",
+    "pdfminer": "pdfminer.six",
+    "pytesseract": "pytesseract",
+    "PIL": "pillow",
+}
+missing = []
+for module, package in needed.items():
+    try:
+        importlib.import_module(module)
+    except ImportError:
+        missing.append(package)
+if missing:
+    venv = sys.argv[1]
+    print("ERROR: these packages are not installed in the environment at " + venv + ":",
+          ", ".join(missing), file=sys.stderr)
+    print("Install them from a login node with:", file=sys.stderr)
+    print(f"    source {venv}/bin/activate", file=sys.stderr)
+    print(f"    python -m pip install {' '.join(missing)}", file=sys.stderr)
+    sys.exit(1)
+import spacy
+if not spacy.util.is_package("en_core_web_lg"):
+    print("ERROR: spaCy model en_core_web_lg is not installed. From a login node run:",
+          file=sys.stderr)
+    print("    python -m spacy download en_core_web_lg", file=sys.stderr)
+    sys.exit(1)
+print("All required packages found.")
+EOF
+
+if command -v tesseract >/dev/null 2>&1; then
+    echo "Tesseract: $(tesseract --version 2>&1 | head -1)"
+else
+    echo "WARNING: tesseract not found; scanned PDFs and images can't be OCR'd." >&2
+    echo "         See SETUP in README.txt." >&2
+fi
+
+# ---------------------------------------------------------------------------
+
+python analyze_pipeline.py \
+    --input_dir "$INPUT_DIR" \
+    --output_dir "$OUTPUT_DIR" \
+    --recursive \
+    "${EXCLUDES[@]}" \
+    "${ONLY_OPTION[@]}" \
+    "${EXTRA[@]}" \
+    --num_procs "$SLURM_CPUS_PER_TASK" \
+    --job_id "$SLURM_JOB_ID"
+
+echo "Results: $OUTPUT_DIR/pii_results_${SLURM_JOB_ID}.csv"
+echo "Next:    sbatch anonymize.script $OUTPUT_DIR/pii_results_${SLURM_JOB_ID}.csv"
+echo "Job finished successfully at: $(date)"
