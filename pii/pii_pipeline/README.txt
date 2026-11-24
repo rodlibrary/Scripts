@@ -3,6 +3,10 @@ PII review and redaction pipeline (Microsoft Presidio)
 
 Put all of these files in one folder on the cluster and run sbatch from it.
 
+Setting up the Python environment (/data/$USER/pve) and step-by-step cluster
+instructions for IQ data: see ../presidio_review/HPC.md, sections
+"One-time setup" and "IQ data".
+
 
 FILES
 -----
