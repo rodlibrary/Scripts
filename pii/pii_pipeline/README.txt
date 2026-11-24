@@ -4,13 +4,21 @@ PII review and redaction pipeline (Microsoft Presidio)
 Runs on an HPC cluster with SLURM, using a Python virtual environment.
 Put all of these files in one folder on the cluster and run sbatch from it.
 
+Input directory: /data/$USER/pii, for both IQ and Non-IQ data. Every job
+reads its input from there (subfolders included) and writes its results
+and output into subfolders of it. To process only some files, use file=
+(see each section) rather than another folder.
+
 Which instructions to follow:
-  IQ DATA       Intranet Quorum / Senate CSS database exports (SCDIF .dat, or
-                pipe-delimited / header-row .txt exports). Each export field
-                is handled by a policy you edit (iq_field_policy.csv).
-  NON-IQ DATA   PDFs, images, emails (.eml), CSVs and plain-text files.
-Do SETUP once first, whichever you use. Collections with both kinds of
-material go through both sets of instructions.
+  IQ DATA       /data/$USER/pii holds Intranet Quorum / Senate CSS database
+                exports (SCDIF .dat, or pipe-delimited / header-row .txt
+                exports), with or without other files. Each export field is
+                handled by a policy you edit (iq_field_policy.csv); PDFs,
+                images, emails and CSVs alongside them are handled exactly as
+                in NON-IQ DATA.
+  NON-IQ DATA   /data/$USER/pii holds no IQ exports: only PDFs, images,
+                emails (.eml), CSVs and plain-text files.
+Do SETUP once first, whichever you use.
 
 The data contains PII. Keep /data/$USER/pii readable only by you
 (chmod 700) and out of shared project folders.
@@ -102,9 +110,9 @@ Re-run step 3 from a login node to fix it.
 
 IQ DATA
 -------
-For Intranet Quorum / Senate CSS exports. Put ONLY IQ exports (and the
-attachments and email folders that come with them) in /data/$USER/pii;
-other material goes through NON-IQ DATA in its own run.
+Input directory: /data/$USER/pii. Put the IQ exports there, with the
+attachment and email folders that come with them and any other files to
+review in the same run.
 
 1. Edit iq_field_policy.csv. Policy actions:
      redact    whole value replaced with the label, e.g. <FIRST_NAME>
@@ -146,9 +154,10 @@ Note: Presidio does not detect street addresses inside free text.
 
 NON-IQ DATA
 -----------
-For PDFs, images (.png .jpg .tif ...), emails (.eml), CSVs and plain-text
-files. Don't mix IQ exports in: analyze_pipeline.py would recognize them,
-but without the field policy. Use IQ DATA for those.
+Input directory: /data/$USER/pii. For PDFs, images (.png .jpg .tif ...),
+emails (.eml), CSVs and plain-text files. If any IQ exports are in
+/data/$USER/pii, use IQ DATA instead: analyze.script would still find
+them, but without the field policy.
 
 1. Copy the files into /data/$USER/pii (subfolders are fine; they're all
    scanned).
